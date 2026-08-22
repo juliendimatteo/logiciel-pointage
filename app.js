@@ -151,7 +151,11 @@ function ouvrirDialogue(titre, corps, surConfirmation) {
   $('dialogue').classList.add('ouvert');
 }
 function fermerDialogue() { $('dialogue').classList.remove('ouvert'); rappelDialogue = null; }
-$('confirmer-dialogue').onclick = () => { fermerDialogue(); if (rappelDialogue) rappelDialogue(); };
+$('confirmer-dialogue').onclick = () => {
+  const rappel = rappelDialogue;
+  fermerDialogue();
+  if (rappel) rappel();
+};
 $('dialogue').addEventListener('click', e => { if (e.target === $('dialogue')) fermerDialogue(); });
 
 /* ═══════════════════════════════════════════════════════════
