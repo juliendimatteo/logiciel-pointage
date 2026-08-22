@@ -70,8 +70,8 @@ const Stockage = {
       { id:'o5', nom:'Nadia Bouchard', metier:'Plombier' },
     ];
     this.donnees.zones = [
-      { id:'z1', nom:'Chantier Bruxelles Centre', lat:50.8503, lng:4.3517, rayon:150 },
-      { id:'z2', nom:'Dépôt Anderlecht',          lat:50.8366, lng:4.3142, rayon:200 },
+      { id:'z1', nom:'Chantier Bruxelles Centre', adresse:'Grand-Place, 1000 Bruxelles', lat:50.8503, lng:4.3517, rayon:150 },
+      { id:'z2', nom:'Dépôt Anderlecht',          adresse:'Rue de Birmingham, 1070 Anderlecht', lat:50.8366, lng:4.3142, rayon:200 },
     ];
     // Pointages du jour
     this.donnees.pointages = [
@@ -646,6 +646,7 @@ function afficherZones() {
       <div class="haut-carte-zone">
         <div>
           <div class="nom-zone">📍 ${z.nom}</div>
+          ${z.adresse ? `<div class="meta-zone">${z.adresse}</div>` : ''}
           <div class="meta-zone">Rayon ${z.rayon}m · ${z.lat.toFixed(4)}°N, ${z.lng.toFixed(4)}°E</div>
         </div>
         <button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);flex-shrink:0;" onclick="supprimerZone('${z.id}')">Supprimer</button>
@@ -657,6 +658,7 @@ function afficherZones() {
 
 function ajouterZone() {
   const nom = $('nom-zone').value.trim();
+  const adresse = $('adresse-zone').value.trim();
   const lat = parseFloat($('lat-zone').value);
   const lng = parseFloat($('lng-zone').value);
   const rayon = parseInt($('rayon-zone').value);
@@ -668,11 +670,40 @@ function ajouterZone() {
     afficherNotification('Coordonnées GPS invalides', 'erreur');
     return;
   }
-  Stockage.donnees.zones.push({ id:genererId(), nom, lat, lng, rayon });
+  Stockage.donnees.zones.push({ id:genererId(), nom, adresse, lat, lng, rayon });
   Stockage.enregistrer();
-  $('nom-zone').value=''; $('lat-zone').value=''; $('lng-zone').value=''; $('rayon-zone').value='';
+  $('nom-zone').value=''; $('adresse-zone').value=''; $('lat-zone').value=''; $('lng-zone').value=''; $('rayon-zone').value='';
   afficherZones();
   afficherNotification(`Zone « ${nom} » ajoutée`, 'succes');
+}
+
+async function rechercherAdresseZone() {
+  const adresse = $('adresse-zone').value.trim();
+  if (!adresse) {
+    afficherNotification('Saisissez une adresse à rechercher', 'erreur');
+    return;
+  }
+  const bouton = $('bouton-recherche-adresse');
+  const libelleOriginal = bouton.textContent;
+  bouton.disabled = true;
+  bouton.textContent = 'Recherche…';
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(adresse)}`;
+    const reponse = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    const resultats = await reponse.json();
+    if (!resultats.length) {
+      afficherNotification('Adresse introuvable', 'erreur');
+      return;
+    }
+    $('lat-zone').value = parseFloat(resultats[0].lat).toFixed(6);
+    $('lng-zone').value = parseFloat(resultats[0].lon).toFixed(6);
+    afficherNotification('Coordonnées trouvées pour cette adresse', 'succes');
+  } catch(e) {
+    afficherNotification('Impossible de contacter le service de recherche d\'adresse', 'erreur');
+  } finally {
+    bouton.disabled = false;
+    bouton.textContent = libelleOriginal;
+  }
 }
 
 function supprimerZone(id) {
