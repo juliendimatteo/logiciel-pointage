@@ -700,6 +700,39 @@ function utiliserPositionActuelle() {
   });
 }
 
+async function rechercherAdresse() {
+  const adresse = $('adresse-zone').value.trim();
+  if (!adresse) {
+    afficherNotification('Veuillez saisir une adresse', 'erreur');
+    return;
+  }
+  const statut = $('adresse-zone-statut');
+  const bouton = $('bouton-recherche-adresse');
+  statut.textContent = 'Recherche en cours…';
+  bouton.disabled = true;
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(adresse)}`;
+    const reponse = await fetch(url, { headers: { 'Accept-Language': 'fr' } });
+    const resultats = await reponse.json();
+    if (!resultats.length) {
+      statut.textContent = 'Adresse introuvable — précisez la ville ou le code postal';
+      afficherNotification('Adresse introuvable', 'erreur');
+      return;
+    }
+    const r = resultats[0];
+    $('lat-zone').value = parseFloat(r.lat).toFixed(6);
+    $('lng-zone').value = parseFloat(r.lon).toFixed(6);
+    statut.textContent = `✓ ${r.display_name}`;
+    if (!$('nom-zone').value.trim()) $('nom-zone').value = adresse;
+    afficherNotification('Adresse localisée', 'succes');
+  } catch (e) {
+    statut.textContent = 'Erreur réseau lors de la recherche';
+    afficherNotification('Erreur réseau lors de la recherche d\'adresse', 'erreur');
+  } finally {
+    bouton.disabled = false;
+  }
+}
+
 /* ─── RAPPORTS ─── */
 let donneesRapport = [];
 
