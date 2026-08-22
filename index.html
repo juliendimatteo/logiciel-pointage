@@ -10,62 +10,62 @@
 </head>
 <body>
 
-<!-- ─── TOAST ─── -->
-<div id="toast" class="toast">
-  <span id="toast-icon"></span>
-  <span id="toast-msg"></span>
+<!-- ─── NOTIFICATION ─── -->
+<div id="notification" class="notification">
+  <span id="icone-notification"></span>
+  <span id="message-notification"></span>
 </div>
 
-<!-- ─── CONFIRM DIALOG ─── -->
-<div id="dialog" class="dialog-overlay">
-  <div class="dialog-box">
-    <div class="dialog-title" id="dialog-title"></div>
-    <div class="dialog-body" id="dialog-body"></div>
-    <div class="dialog-actions">
-      <button class="btn btn-ghost btn-sm" onclick="closeDialog()">Annuler</button>
-      <button class="btn btn-danger btn-sm" id="dialog-confirm">Confirmer</button>
+<!-- ─── BOÎTE DE DIALOGUE DE CONFIRMATION ─── -->
+<div id="dialogue" class="fond-dialogue">
+  <div class="boite-dialogue">
+    <div class="titre-dialogue" id="titre-dialogue"></div>
+    <div class="corps-dialogue" id="corps-dialogue"></div>
+    <div class="actions-dialogue">
+      <button class="bouton bouton-fantome bouton-petit" onclick="fermerDialogue()">Annuler</button>
+      <button class="bouton bouton-danger bouton-petit" id="confirmer-dialogue">Confirmer</button>
     </div>
   </div>
 </div>
 
 <!-- ═══════════════════════════════════════════
-     LOGIN VIEW
+     VUE CONNEXION
 ═══════════════════════════════════════════ -->
-<div id="view-login" class="view">
+<div id="vue-connexion" class="vue">
   <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;">
-    <div class="login-box">
-      <div class="login-logo">
-        <div class="login-logo-icon">
+    <div class="boite-connexion">
+      <div class="logo-connexion">
+        <div class="icone-logo-connexion">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
           </svg>
         </div>
-        <div class="login-logo-name">Pointage<span>Pro</span></div>
+        <div class="nom-logo-connexion">Pointage<span>Pro</span></div>
       </div>
-      <div class="login-card">
-        <div class="login-title">Connexion</div>
-        <div class="login-sub">Sélectionnez votre rôle pour continuer</div>
-        <div class="role-grid">
-          <div class="role-card" id="role-manager" onclick="selectRole('manager')">
-            <div class="role-card-icon" style="background:#EFF6FF;">📊</div>
-            <div class="role-card-label">Gestionnaire</div>
-            <div class="role-card-desc">Tableau de bord &amp; rapports</div>
+      <div class="carte-connexion">
+        <div class="titre-connexion">Connexion</div>
+        <div class="sous-titre-connexion">Sélectionnez votre rôle pour continuer</div>
+        <div class="grille-roles">
+          <div class="carte-role" id="role-gestionnaire" onclick="selectionnerRole('gestionnaire')">
+            <div class="icone-carte-role" style="background:#EFF6FF;">📊</div>
+            <div class="libelle-carte-role">Gestionnaire</div>
+            <div class="description-carte-role">Tableau de bord &amp; rapports</div>
           </div>
-          <div class="role-card" id="role-worker" onclick="selectRole('worker')">
-            <div class="role-card-icon" style="background:#F0FDF4;">👷</div>
-            <div class="role-card-label">Ouvrier</div>
-            <div class="role-card-desc">Pointer entrée / sortie</div>
+          <div class="carte-role" id="role-ouvrier" onclick="selectionnerRole('ouvrier')">
+            <div class="icone-carte-role" style="background:#F0FDF4;">👷</div>
+            <div class="libelle-carte-role">Ouvrier</div>
+            <div class="description-carte-role">Pointer entrée / sortie</div>
           </div>
         </div>
-        <div id="worker-select-section" class="worker-select-wrap" style="display:none;">
-          <label class="field-label">Sélectionnez votre nom</label>
-          <select id="worker-select" class="field-select">
+        <div id="section-selection-ouvrier" class="conteneur-selection-ouvrier" style="display:none;">
+          <label class="libelle-champ">Sélectionnez votre nom</label>
+          <select id="selection-ouvrier" class="champ-liste">
             <option value="">-- Choisir --</option>
           </select>
         </div>
-        <button class="login-btn" id="login-btn" onclick="doLogin()" disabled>Continuer →</button>
+        <button class="bouton-connexion" id="bouton-connexion" onclick="seConnecter()" disabled>Continuer →</button>
       </div>
-      <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--txt-3);">
+      <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--texte-3);">
         Données locales · GPS requis pour le pointage
       </div>
     </div>
@@ -73,199 +73,199 @@
 </div>
 
 <!-- ═══════════════════════════════════════════
-     WORKER VIEW
+     VUE OUVRIER
 ═══════════════════════════════════════════ -->
-<div id="view-worker" class="view">
-  <header class="app-header">
-    <div class="app-header-logo">
-      <div class="app-header-logo-icon">
+<div id="vue-ouvrier" class="vue">
+  <header class="en-tete-app">
+    <div class="logo-en-tete">
+      <div class="icone-logo-en-tete">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/>
         </svg>
       </div>
       PointagePro
     </div>
-    <div class="header-spacer"></div>
-    <div class="header-user">
+    <div class="espaceur-en-tete"></div>
+    <div class="utilisateur-en-tete">
       <div>
-        <div class="header-user-name" id="w-header-name"></div>
-        <div class="header-user-role">Ouvrier</div>
+        <div class="nom-utilisateur-en-tete" id="nom-entete-ouvrier"></div>
+        <div class="role-utilisateur-en-tete">Ouvrier</div>
       </div>
-      <div class="header-avatar" id="w-header-avatar"></div>
-      <button class="btn btn-ghost btn-sm" onclick="logout()">Déconnexion</button>
+      <div class="avatar-en-tete" id="avatar-entete-ouvrier"></div>
+      <button class="bouton bouton-fantome bouton-petit" onclick="seDeconnecter()">Déconnexion</button>
     </div>
   </header>
 
-  <div class="content">
-    <!-- Date/Time -->
-    <div class="worker-datetime">
-      <div class="worker-date" id="w-date"></div>
-      <div class="worker-time" id="w-time">--:--</div>
+  <div class="contenu">
+    <!-- Date/Heure -->
+    <div class="date-heure-ouvrier">
+      <div class="date-ouvrier" id="date-ouvrier"></div>
+      <div class="heure-ouvrier" id="heure-ouvrier">--:--</div>
     </div>
 
-    <!-- Status -->
-    <div class="card status-card">
-      <div class="status-card-row">
+    <!-- Statut -->
+    <div class="carte carte-statut">
+      <div class="ligne-carte-statut">
         <div>
-          <div class="status-label">Statut actuel</div>
-          <div class="status-value" id="w-status-text">—</div>
-          <div class="status-since" id="w-status-since"></div>
+          <div class="libelle-statut">Statut actuel</div>
+          <div class="valeur-statut" id="texte-statut-ouvrier">—</div>
+          <div class="depuis-statut" id="depuis-statut-ouvrier"></div>
         </div>
-        <div id="w-status-badge"></div>
+        <div id="badge-statut-ouvrier"></div>
       </div>
     </div>
 
     <!-- GPS -->
-    <div class="card gps-card">
-      <div class="gps-row">
-        <div class="gps-icon">
+    <div class="carte carte-gps">
+      <div class="ligne-gps">
+        <div class="icone-gps">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/><path d="M19.778 4.222a10 10 0 0 1 0 15.556M4.222 4.222a10 10 0 0 0 0 15.556M15.536 8.464a5 5 0 0 1 0 7.072M8.464 8.464a5 5 0 0 0 0 7.072"/>
           </svg>
         </div>
-        <div class="gps-info">
-          <div class="gps-status" id="w-gps-status">Recherche de position…</div>
-          <div class="gps-coords" id="w-gps-coords">—</div>
+        <div class="info-gps">
+          <div class="statut-gps" id="statut-gps-ouvrier">Recherche de position…</div>
+          <div class="coordonnees-gps" id="coordonnees-gps-ouvrier">—</div>
         </div>
-        <div id="w-gps-badge"></div>
+        <div id="badge-gps-ouvrier"></div>
       </div>
-      <div class="gps-zone" id="w-zone-row" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-2);">
-        <span id="w-zone-dot" class="dot dot-grey"></span>
-        <span id="w-zone-text" style="color:var(--txt-2);">Aucune zone configurée</span>
+      <div class="zone-gps" id="ligne-zone-ouvrier" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bordure-2);">
+        <span id="point-zone-ouvrier" class="point point-gris"></span>
+        <span id="texte-zone-ouvrier" style="color:var(--texte-2);">Aucune zone configurée</span>
       </div>
     </div>
 
     <!-- Radar -->
-    <div class="card" style="padding:16px;" id="w-radar-card">
-      <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--txt-3);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+    <div class="carte" style="padding:16px;" id="carte-radar-ouvrier">
+      <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--texte-3);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
         <span>Zone la plus proche</span>
-        <span id="w-radar-dist" style="color:var(--txt-2);font-variant-numeric:tabular-nums;"></span>
+        <span id="distance-radar-ouvrier" style="color:var(--texte-2);font-variant-numeric:tabular-nums;"></span>
       </div>
-      <div class="radar-wrap">
-        <canvas id="w-radar" class="radar-canvas" width="200" height="200"></canvas>
+      <div class="conteneur-radar">
+        <canvas id="radar-ouvrier" class="canevas-radar" width="200" height="200"></canvas>
       </div>
     </div>
 
-    <!-- Punch Button -->
-    <div class="punch-wrap">
-      <div class="punch-btn-outer">
-        <div class="punch-btn-ring" id="punch-ring"></div>
-        <button class="punch-btn" id="punch-btn" onclick="doPunch()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="punch-icon">
+    <!-- Bouton de pointage -->
+    <div class="conteneur-pointage">
+      <div class="bouton-pointage-exterieur">
+        <div class="anneau-bouton-pointage" id="anneau-pointage"></div>
+        <button class="bouton-pointage" id="bouton-pointage" onclick="pointer()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="icone-pointage">
             <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
           </svg>
-          <span id="punch-label">Pointer</span>
-          <span class="punch-btn-label" id="punch-sub">Chargement…</span>
+          <span id="libelle-pointage">Pointer</span>
+          <span class="libelle-bouton-pointage" id="sous-libelle-pointage">Chargement…</span>
         </button>
       </div>
     </div>
 
-    <!-- History -->
-    <div id="w-history-section">
-      <div class="history-title">Pointages d'aujourd'hui</div>
-      <div id="w-history-list"></div>
+    <!-- Historique -->
+    <div id="section-historique-ouvrier">
+      <div class="titre-historique">Pointages d'aujourd'hui</div>
+      <div id="liste-historique-ouvrier"></div>
     </div>
   </div>
 </div>
 
 <!-- ═══════════════════════════════════════════
-     MANAGER VIEW
+     VUE GESTIONNAIRE
 ═══════════════════════════════════════════ -->
-<div id="view-manager" class="view">
-  <header class="app-header">
-    <div class="app-header-logo">
-      <div class="app-header-logo-icon">
+<div id="vue-gestionnaire" class="vue">
+  <header class="en-tete-app">
+    <div class="logo-en-tete">
+      <div class="icone-logo-en-tete">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/>
         </svg>
       </div>
       PointagePro
     </div>
-    <div class="header-spacer"></div>
-    <div class="header-user">
+    <div class="espaceur-en-tete"></div>
+    <div class="utilisateur-en-tete">
       <div>
-        <div class="header-user-name">Gestionnaire</div>
-        <div class="header-user-role">Accès complet</div>
+        <div class="nom-utilisateur-en-tete">Gestionnaire</div>
+        <div class="role-utilisateur-en-tete">Accès complet</div>
       </div>
-      <div class="header-avatar" style="background:var(--amber);">G</div>
-      <button class="btn btn-ghost btn-sm" onclick="logout()">Déconnexion</button>
+      <div class="avatar-en-tete" style="background:var(--ambre);">G</div>
+      <button class="bouton bouton-fantome bouton-petit" onclick="seDeconnecter()">Déconnexion</button>
     </div>
   </header>
 
-  <div class="content">
-    <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('overview', this)">📋 Vue d'ensemble</button>
-      <button class="tab-btn" onclick="switchTab('zones', this)">📍 Zones</button>
-      <button class="tab-btn" onclick="switchTab('reports', this)">📊 Rapports</button>
+  <div class="contenu">
+    <div class="onglets">
+      <button class="bouton-onglet actif" onclick="changerOnglet('vue-ensemble', this)">📋 Vue d'ensemble</button>
+      <button class="bouton-onglet" onclick="changerOnglet('zones', this)">📍 Zones</button>
+      <button class="bouton-onglet" onclick="changerOnglet('rapports', this)">📊 Rapports</button>
     </div>
 
-    <!-- TAB: OVERVIEW -->
-    <div id="tab-overview" class="tab-panel active">
-      <div class="stats-row">
-        <div class="card stat-card">
-          <div class="stat-card-header">
-            <span class="badge badge-green"><span class="dot dot-green dot-pulse"></span>Présents</span>
-            <div class="stat-card-icon" style="background:var(--green-lt);">✅</div>
+    <!-- ONGLET : VUE D'ENSEMBLE -->
+    <div id="onglet-vue-ensemble" class="panneau-onglet actif">
+      <div class="ligne-stats">
+        <div class="carte carte-stat">
+          <div class="entete-carte-stat">
+            <span class="badge badge-vert"><span class="point point-vert point-pulsation"></span>Présents</span>
+            <div class="icone-carte-stat" style="background:var(--vert-clair);">✅</div>
           </div>
-          <div class="stat-val" id="stat-present" style="color:var(--green);">0</div>
-          <div class="stat-label">ouvriers sur chantier</div>
+          <div class="valeur-stat" id="stat-presents" style="color:var(--vert);">0</div>
+          <div class="libelle-stat">ouvriers sur chantier</div>
         </div>
-        <div class="card stat-card">
-          <div class="stat-card-header">
-            <span class="badge badge-red">Absents</span>
-            <div class="stat-card-icon" style="background:var(--red-lt);">🔴</div>
+        <div class="carte carte-stat">
+          <div class="entete-carte-stat">
+            <span class="badge badge-rouge">Absents</span>
+            <div class="icone-carte-stat" style="background:var(--rouge-clair);">🔴</div>
           </div>
-          <div class="stat-val" id="stat-absent" style="color:var(--red);">0</div>
-          <div class="stat-label">non pointés</div>
+          <div class="valeur-stat" id="stat-absents" style="color:var(--rouge);">0</div>
+          <div class="libelle-stat">non pointés</div>
         </div>
-        <div class="card stat-card">
-          <div class="stat-card-header">
-            <span class="badge badge-amber">Hors zone</span>
-            <div class="stat-card-icon" style="background:var(--amber-lt);">⚠️</div>
+        <div class="carte carte-stat">
+          <div class="entete-carte-stat">
+            <span class="badge badge-ambre">Hors zone</span>
+            <div class="icone-carte-stat" style="background:var(--ambre-clair);">⚠️</div>
           </div>
-          <div class="stat-val" id="stat-outside" style="color:var(--amber);">0</div>
-          <div class="stat-label">hors périmètre</div>
+          <div class="valeur-stat" id="stat-hors-zone" style="color:var(--ambre);">0</div>
+          <div class="libelle-stat">hors périmètre</div>
         </div>
       </div>
-      <div class="section-header">
-        <div class="section-title">Ouvriers</div>
-        <button class="btn btn-ghost btn-sm" onclick="refreshManager()">↻ Actualiser</button>
+      <div class="entete-section">
+        <div class="titre-section">Ouvriers</div>
+        <button class="bouton bouton-fantome bouton-petit" onclick="actualiserGestionnaire()">↻ Actualiser</button>
       </div>
-      <div class="worker-grid" id="mgr-worker-grid"></div>
+      <div class="grille-ouvriers" id="grille-ouvriers-gestionnaire"></div>
     </div>
 
-    <!-- TAB: ZONES -->
-    <div id="tab-zones" class="tab-panel">
-      <div class="zones-layout">
+    <!-- ONGLET : ZONES -->
+    <div id="onglet-zones" class="panneau-onglet">
+      <div class="disposition-zones">
         <div>
-          <div class="section-header" style="margin-bottom:14px;">
-            <div class="section-title">Zones de pointage</div>
+          <div class="entete-section" style="margin-bottom:14px;">
+            <div class="titre-section">Zones de pointage</div>
           </div>
-          <div id="zones-list" class="zones-list"></div>
+          <div id="liste-zones" class="liste-zones"></div>
         </div>
         <div>
-          <div class="card add-zone-card">
-            <div class="add-zone-title">➕ Ajouter une zone</div>
-            <div class="form-grid">
-              <div class="field">
-                <label class="field-label">Nom du chantier</label>
-                <input type="text" id="zone-name" placeholder="ex: Chantier Bruxelles">
+          <div class="carte carte-ajout-zone">
+            <div class="titre-ajout-zone">➕ Ajouter une zone</div>
+            <div class="grille-formulaire">
+              <div class="champ">
+                <label class="libelle-champ">Nom du chantier</label>
+                <input type="text" id="nom-zone" placeholder="ex: Chantier Bruxelles">
               </div>
-              <div class="field">
-                <label class="field-label">Latitude</label>
-                <input type="number" id="zone-lat" placeholder="50.8503" step="0.0001">
+              <div class="champ">
+                <label class="libelle-champ">Latitude</label>
+                <input type="number" id="lat-zone" placeholder="50.8503" step="0.0001">
               </div>
-              <div class="field">
-                <label class="field-label">Longitude</label>
-                <input type="number" id="zone-lng" placeholder="4.3517" step="0.0001">
+              <div class="champ">
+                <label class="libelle-champ">Longitude</label>
+                <input type="number" id="lng-zone" placeholder="4.3517" step="0.0001">
               </div>
-              <div class="field">
-                <label class="field-label">Rayon (mètres)</label>
-                <input type="number" id="zone-radius" placeholder="100" min="10" max="5000">
-                <span class="form-hint">Zone dans laquelle le pointage est valide</span>
+              <div class="champ">
+                <label class="libelle-champ">Rayon (mètres)</label>
+                <input type="number" id="rayon-zone" placeholder="100" min="10" max="5000">
+                <span class="astuce-formulaire">Zone dans laquelle le pointage est valide</span>
               </div>
-              <button class="btn btn-primary" onclick="addZone()" style="margin-top:4px;">Ajouter la zone</button>
-              <button class="btn btn-ghost btn-sm" onclick="useCurrentLocation()" style="margin-top:-4px;">
+              <button class="bouton bouton-primaire" onclick="ajouterZone()" style="margin-top:4px;">Ajouter la zone</button>
+              <button class="bouton bouton-fantome bouton-petit" onclick="utiliserPositionActuelle()" style="margin-top:-4px;">
                 📍 Utiliser ma position actuelle
               </button>
             </div>
@@ -274,30 +274,30 @@
       </div>
     </div>
 
-    <!-- TAB: REPORTS -->
-    <div id="tab-reports" class="tab-panel">
-      <div class="report-controls">
-        <div class="date-range-row">
-          <div class="field">
-            <label class="field-label">Du</label>
-            <input type="date" id="report-from">
+    <!-- ONGLET : RAPPORTS -->
+    <div id="onglet-rapports" class="panneau-onglet">
+      <div class="controles-rapport">
+        <div class="ligne-plage-dates">
+          <div class="champ">
+            <label class="libelle-champ">Du</label>
+            <input type="date" id="rapport-du">
           </div>
-          <div class="field">
-            <label class="field-label">Au</label>
-            <input type="date" id="report-to">
+          <div class="champ">
+            <label class="libelle-champ">Au</label>
+            <input type="date" id="rapport-au">
           </div>
-          <div class="field">
-            <label class="field-label">Ouvrier</label>
-            <select class="field-select" id="report-worker" style="width:180px;">
+          <div class="champ">
+            <label class="libelle-champ">Ouvrier</label>
+            <select class="champ-liste" id="rapport-ouvrier" style="width:180px;">
               <option value="">Tous les ouvriers</option>
             </select>
           </div>
         </div>
-        <button class="btn btn-primary" onclick="generateReport()">Générer</button>
-        <button class="btn btn-ghost" onclick="exportCSV()" id="export-btn" style="display:none;">⬇ Exporter CSV</button>
+        <button class="bouton bouton-primaire" onclick="genererRapport()">Générer</button>
+        <button class="bouton bouton-fantome" onclick="exporterCSV()" id="bouton-export" style="display:none;">⬇ Exporter CSV</button>
       </div>
-      <div class="report-table-wrap">
-        <table class="report-table" id="report-table">
+      <div class="conteneur-tableau-rapport">
+        <table class="tableau-rapport" id="tableau-rapport">
           <thead>
             <tr>
               <th>Ouvrier</th>
@@ -309,8 +309,8 @@
               <th>Statut</th>
             </tr>
           </thead>
-          <tbody id="report-body">
-            <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--txt-3);">Sélectionnez une période et cliquez sur Générer</td></tr>
+          <tbody id="corps-rapport">
+            <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--texte-3);">Sélectionnez une période et cliquez sur Générer</td></tr>
           </tbody>
         </table>
       </div>

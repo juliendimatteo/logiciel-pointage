@@ -1,90 +1,89 @@
 /* ═══════════════════════════════════════════════════════════
-   UTILITIES
+   UTILITAIRES
 ═══════════════════════════════════════════════════════════ */
 const $ = id => document.getElementById(id);
-const fmt = (d, opts) => new Date(d).toLocaleString('fr-BE', opts);
-const fmtDate = d => fmt(d, {day:'2-digit',month:'long',year:'numeric'});
-const fmtDateShort = d => fmt(d, {day:'2-digit',month:'2-digit',year:'numeric'});
-const fmtTime = d => fmt(d, {hour:'2-digit',minute:'2-digit',second:'2-digit'});
-const fmtTimeShort = d => fmt(d, {hour:'2-digit',minute:'2-digit'});
-const todayStr = () => new Date().toISOString().slice(0,10);
-const uid = () => Math.random().toString(36).slice(2,10);
+const formater = (d, options) => new Date(d).toLocaleString('fr-BE', options);
+const formaterDate = d => formater(d, {day:'2-digit',month:'long',year:'numeric'});
+const formaterDateCourte = d => formater(d, {day:'2-digit',month:'2-digit',year:'numeric'});
+const formaterHeure = d => formater(d, {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+const formaterHeureCourte = d => formater(d, {hour:'2-digit',minute:'2-digit'});
+const dateAujourdhui = () => new Date().toISOString().slice(0,10);
+const genererId = () => Math.random().toString(36).slice(2,10);
 
-function geoDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371000, toRad = d => d * Math.PI / 180;
-  const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+function distanceGeo(lat1, lon1, lat2, lon2) {
+  const R = 6371000, versRad = d => d * Math.PI / 180;
+  const dLat = versRad(lat2-lat1), dLon = versRad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(versRad(lat1))*Math.cos(versRad(lat2))*Math.sin(dLon/2)**2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
-function geoBearing(lat1, lon1, lat2, lon2) {
-  const toRad = d => d * Math.PI / 180;
-  const dLon = toRad(lon2-lon1);
-  const y = Math.sin(dLon)*Math.cos(toRad(lat2));
-  const x = Math.cos(toRad(lat1))*Math.sin(toRad(lat2)) - Math.sin(toRad(lat1))*Math.cos(toRad(lat2))*Math.cos(dLon);
+function capGeo(lat1, lon1, lat2, lon2) {
+  const versRad = d => d * Math.PI / 180;
+  const dLon = versRad(lon2-lon1);
+  const y = Math.sin(dLon)*Math.cos(versRad(lat2));
+  const x = Math.cos(versRad(lat1))*Math.sin(versRad(lat2)) - Math.sin(versRad(lat1))*Math.cos(versRad(lat2))*Math.cos(dLon);
   return (Math.atan2(y,x)*180/Math.PI + 360) % 360;
 }
-function formatDuration(ms) {
+function formaterDuree(ms) {
   if (ms < 0) return '—';
   const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000);
   return h > 0 ? `${h}h${m.toString().padStart(2,'0')}` : `${m}min`;
 }
-function formatDistM(m) {
+function formaterDistance(m) {
   return m >= 1000 ? `${(m/1000).toFixed(1)} km` : `${Math.round(m)} m`;
 }
-function initials(name) {
-  return name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+function initiales(nom) {
+  return nom.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
 }
-const AVATAR_COLORS = ['#1D4ED8','#7C3AED','#DB2777','#D97706','#15803D','#0F766E','#B91C1C','#6D28D9'];
-function avatarColor(name) {
-  let h = 0; for (const c of name) h = (h*31+c.charCodeAt(0)) & 0xFFFFFF;
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+const COULEURS_AVATAR = ['#1D4ED8','#7C3AED','#DB2777','#D97706','#15803D','#0F766E','#B91C1C','#6D28D9'];
+function couleurAvatar(nom) {
+  let h = 0; for (const c of nom) h = (h*31+c.charCodeAt(0)) & 0xFFFFFF;
+  return COULEURS_AVATAR[Math.abs(h) % COULEURS_AVATAR.length];
 }
 
-function isDarkMode() {
+function modeSombreActif() {
   const t = document.documentElement.dataset.theme;
   if (t === 'dark') return true; if (t === 'light') return false;
   return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
 /* ═══════════════════════════════════════════════════════════
-   DATA STORE
+   STOCKAGE DES DONNÉES
 ═══════════════════════════════════════════════════════════ */
-const Store = {
-  KEY: 'pointagepro_v2',
-  data: { workers: [], zones: [], punches: [] },
-  load() {
-    try { const d = localStorage.getItem(this.KEY); if (d) this.data = JSON.parse(d); } catch(e) {}
+const Stockage = {
+  CLE: 'pointagepro_donnees',
+  donnees: { ouvriers: [], zones: [], pointages: [] },
+  charger() {
+    try { const d = localStorage.getItem(this.CLE); if (d) this.donnees = JSON.parse(d); } catch(e) {}
   },
-  save() {
-    try { localStorage.setItem(this.KEY, JSON.stringify(this.data)); } catch(e) {}
+  enregistrer() {
+    try { localStorage.setItem(this.CLE, JSON.stringify(this.donnees)); } catch(e) {}
   },
-  seed() {
-    const now = new Date();
-    const t = (h,m) => { const d=new Date(now); d.setHours(h,m,0,0); return d.toISOString(); };
+  initialiser() {
+    const maintenant = new Date();
+    const t = (h,m) => { const d=new Date(maintenant); d.setHours(h,m,0,0); return d.toISOString(); };
 
-    this.data.workers = [
-      { id:'w1', name:'Jean Dupont',    role:'Maçon' },
-      { id:'w2', name:'Marc Laurent',   role:'Électricien' },
-      { id:'w3', name:'Sophie Renard',  role:'Chef de chantier' },
-      { id:'w4', name:'Pierre Lecomte', role:'Peintre' },
-      { id:'w5', name:'Nadia Bouchard', role:'Plombier' },
+    this.donnees.ouvriers = [
+      { id:'o1', nom:'Jean Dupont',    metier:'Maçon' },
+      { id:'o2', nom:'Marc Laurent',   metier:'Électricien' },
+      { id:'o3', nom:'Sophie Renard',  metier:'Chef de chantier' },
+      { id:'o4', nom:'Pierre Lecomte', metier:'Peintre' },
+      { id:'o5', nom:'Nadia Bouchard', metier:'Plombier' },
     ];
-    this.data.zones = [
-      { id:'z1', name:'Chantier Bruxelles Centre', lat:50.8503, lng:4.3517, radius:150 },
-      { id:'z2', name:'Dépôt Anderlecht',          lat:50.8366, lng:4.3142, radius:200 },
+    this.donnees.zones = [
+      { id:'z1', nom:'Chantier Bruxelles Centre', lat:50.8503, lng:4.3517, rayon:150 },
+      { id:'z2', nom:'Dépôt Anderlecht',          lat:50.8366, lng:4.3142, rayon:200 },
     ];
-    // Punches for today
-    const today = todayStr();
-    this.data.punches = [
-      { id:uid(), workerId:'w1', type:'entree', lat:50.8505, lng:4.3520, timestamp:t(7,35), zoneId:'z1', inZone:true },
-      { id:uid(), workerId:'w2', type:'entree', lat:50.8501, lng:4.3515, timestamp:t(7,50), zoneId:'z1', inZone:true },
-      { id:uid(), workerId:'w2', type:'sortie', lat:50.8503, lng:4.3518, timestamp:t(12,5),  zoneId:'z1', inZone:true },
-      { id:uid(), workerId:'w2', type:'entree', lat:50.8502, lng:4.3516, timestamp:t(12,45), zoneId:'z1', inZone:true },
-      { id:uid(), workerId:'w3', type:'entree', lat:50.8365, lng:4.3140, timestamp:t(8,10), zoneId:'z2', inZone:true },
-      { id:uid(), workerId:'w4', type:'entree', lat:50.8490, lng:4.3600, timestamp:t(9,0),  zoneId:null,  inZone:false },
-      { id:uid(), workerId:'w4', type:'sortie', lat:50.8490, lng:4.3600, timestamp:t(11,30),zoneId:null,  inZone:false },
+    // Pointages du jour
+    this.donnees.pointages = [
+      { id:genererId(), idOuvrier:'o1', type:'entree', lat:50.8505, lng:4.3520, horodatage:t(7,35), idZone:'z1', dansZone:true },
+      { id:genererId(), idOuvrier:'o2', type:'entree', lat:50.8501, lng:4.3515, horodatage:t(7,50), idZone:'z1', dansZone:true },
+      { id:genererId(), idOuvrier:'o2', type:'sortie', lat:50.8503, lng:4.3518, horodatage:t(12,5),  idZone:'z1', dansZone:true },
+      { id:genererId(), idOuvrier:'o2', type:'entree', lat:50.8502, lng:4.3516, horodatage:t(12,45), idZone:'z1', dansZone:true },
+      { id:genererId(), idOuvrier:'o3', type:'entree', lat:50.8365, lng:4.3140, horodatage:t(8,10), idZone:'z2', dansZone:true },
+      { id:genererId(), idOuvrier:'o4', type:'entree', lat:50.8490, lng:4.3600, horodatage:t(9,0),  idZone:null,  dansZone:false },
+      { id:genererId(), idOuvrier:'o4', type:'sortie', lat:50.8490, lng:4.3600, horodatage:t(11,30),idZone:null,  dansZone:false },
     ];
-    this.save();
+    this.enregistrer();
   }
 };
 
@@ -93,683 +92,683 @@ const Store = {
 ═══════════════════════════════════════════════════════════ */
 const GPS = {
   position: null,
-  watchId: null,
-  onUpdate: null,
-  start() {
+  idSuivi: null,
+  surMiseAJour: null,
+  demarrer() {
     if (!navigator.geolocation) return;
-    this.watchId = navigator.geolocation.watchPosition(
+    this.idSuivi = navigator.geolocation.watchPosition(
       pos => {
-        this.position = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
-        if (this.onUpdate) this.onUpdate(this.position);
+        this.position = { lat: pos.coords.latitude, lng: pos.coords.longitude, precision: pos.coords.accuracy };
+        if (this.surMiseAJour) this.surMiseAJour(this.position);
       },
-      err => { console.warn('GPS error:', err.message); },
+      err => { console.warn('Erreur GPS :', err.message); },
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
     );
   },
-  stop() {
-    if (this.watchId !== null) { navigator.geolocation.clearWatch(this.watchId); this.watchId = null; }
+  arreter() {
+    if (this.idSuivi !== null) { navigator.geolocation.clearWatch(this.idSuivi); this.idSuivi = null; }
   },
-  getClosestZone(lat, lng) {
-    let best = null, bestDist = Infinity;
-    for (const z of Store.data.zones) {
-      const d = geoDistance(lat, lng, z.lat, z.lng);
-      if (d < bestDist) { bestDist = d; best = z; }
+  zoneLaPlusProche(lat, lng) {
+    let meilleure = null, meilleureDist = Infinity;
+    for (const z of Stockage.donnees.zones) {
+      const d = distanceGeo(lat, lng, z.lat, z.lng);
+      if (d < meilleureDist) { meilleureDist = d; meilleure = z; }
     }
-    return best ? { zone: best, dist: bestDist, inZone: bestDist <= best.radius } : null;
+    return meilleure ? { zone: meilleure, distance: meilleureDist, dansZone: meilleureDist <= meilleure.rayon } : null;
   }
 };
 
 /* ═══════════════════════════════════════════════════════════
-   AUTH
+   AUTHENTIFICATION
 ═══════════════════════════════════════════════════════════ */
-let currentUser = null;
-function saveSession(u) { try { localStorage.setItem('pp_session', JSON.stringify(u)); } catch(e){} }
-function loadSession() { try { const s=localStorage.getItem('pp_session'); return s?JSON.parse(s):null; } catch(e){return null;} }
-function clearSession() { try { localStorage.removeItem('pp_session'); } catch(e){} }
+let utilisateurActuel = null;
+function enregistrerSession(u) { try { localStorage.setItem('pointagepro_session', JSON.stringify(u)); } catch(e){} }
+function chargerSession() { try { const s=localStorage.getItem('pointagepro_session'); return s?JSON.parse(s):null; } catch(e){return null;} }
+function effacerSession() { try { localStorage.removeItem('pointagepro_session'); } catch(e){} }
 
 /* ═══════════════════════════════════════════════════════════
-   TOAST
+   NOTIFICATION
 ═══════════════════════════════════════════════════════════ */
-let toastTimer = null;
-function showToast(msg, type='info') {
-  const icons = { success:'✅', error:'❌', warn:'⚠️', info:'ℹ️' };
-  $('toast-icon').textContent = icons[type] || '';
-  $('toast-msg').textContent = msg;
-  const t = $('toast');
-  t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>t.classList.remove('show'), 3200);
+let minuteurNotification = null;
+function afficherNotification(msg, type='info') {
+  const icones = { succes:'✅', erreur:'❌', alerte:'⚠️', info:'ℹ️' };
+  $('icone-notification').textContent = icones[type] || '';
+  $('message-notification').textContent = msg;
+  const n = $('notification');
+  n.classList.add('visible');
+  clearTimeout(minuteurNotification);
+  minuteurNotification = setTimeout(()=>n.classList.remove('visible'), 3200);
 }
 
 /* ═══════════════════════════════════════════════════════════
-   CONFIRM DIALOG
+   BOÎTE DE DIALOGUE
 ═══════════════════════════════════════════════════════════ */
-let dialogCb = null;
-function openDialog(title, body, onConfirm) {
-  $('dialog-title').textContent = title;
-  $('dialog-body').textContent = body;
-  dialogCb = onConfirm;
-  $('dialog').classList.add('open');
+let rappelDialogue = null;
+function ouvrirDialogue(titre, corps, surConfirmation) {
+  $('titre-dialogue').textContent = titre;
+  $('corps-dialogue').textContent = corps;
+  rappelDialogue = surConfirmation;
+  $('dialogue').classList.add('ouvert');
 }
-function closeDialog() { $('dialog').classList.remove('open'); dialogCb = null; }
-$('dialog-confirm').onclick = () => { closeDialog(); if (dialogCb) dialogCb(); };
-$('dialog').addEventListener('click', e => { if (e.target === $('dialog')) closeDialog(); });
+function fermerDialogue() { $('dialogue').classList.remove('ouvert'); rappelDialogue = null; }
+$('confirmer-dialogue').onclick = () => { fermerDialogue(); if (rappelDialogue) rappelDialogue(); };
+$('dialogue').addEventListener('click', e => { if (e.target === $('dialogue')) fermerDialogue(); });
 
 /* ═══════════════════════════════════════════════════════════
-   LOGIN
+   CONNEXION
 ═══════════════════════════════════════════════════════════ */
-let selectedRole = null;
-function selectRole(role) {
-  selectedRole = role;
-  $('role-manager').classList.toggle('selected', role==='manager');
-  $('role-worker').classList.toggle('selected', role==='worker');
+let roleSelectionne = null;
+function selectionnerRole(role) {
+  roleSelectionne = role;
+  $('role-gestionnaire').classList.toggle('selectionne', role==='gestionnaire');
+  $('role-ouvrier').classList.toggle('selectionne', role==='ouvrier');
 
-  if (role === 'worker') {
-    $('worker-select-section').style.display = 'block';
-    const sel = $('worker-select');
+  if (role === 'ouvrier') {
+    $('section-selection-ouvrier').style.display = 'block';
+    const sel = $('selection-ouvrier');
     sel.innerHTML = '<option value="">-- Choisir votre nom --</option>';
-    Store.data.workers.forEach(w => {
-      const o = document.createElement('option');
-      o.value = w.id; o.textContent = `${w.name} — ${w.role}`;
-      sel.appendChild(o);
+    Stockage.donnees.ouvriers.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o.id; opt.textContent = `${o.nom} — ${o.metier}`;
+      sel.appendChild(opt);
     });
-    sel.onchange = () => updateLoginBtn();
-    updateLoginBtn();
+    sel.onchange = () => mettreAJourBoutonConnexion();
+    mettreAJourBoutonConnexion();
   } else {
-    $('worker-select-section').style.display = 'none';
-    updateLoginBtn();
+    $('section-selection-ouvrier').style.display = 'none';
+    mettreAJourBoutonConnexion();
   }
 }
 
-function updateLoginBtn() {
-  const btn = $('login-btn');
-  if (!selectedRole) { btn.disabled = true; return; }
-  if (selectedRole === 'worker' && !$('worker-select').value) { btn.disabled = true; return; }
+function mettreAJourBoutonConnexion() {
+  const btn = $('bouton-connexion');
+  if (!roleSelectionne) { btn.disabled = true; return; }
+  if (roleSelectionne === 'ouvrier' && !$('selection-ouvrier').value) { btn.disabled = true; return; }
   btn.disabled = false;
 }
 
-function doLogin() {
-  if (!selectedRole) return;
-  if (selectedRole === 'manager') {
-    currentUser = { role: 'manager', name: 'Gestionnaire' };
-    saveSession(currentUser);
-    showManagerView();
+function seConnecter() {
+  if (!roleSelectionne) return;
+  if (roleSelectionne === 'gestionnaire') {
+    utilisateurActuel = { role: 'gestionnaire', nom: 'Gestionnaire' };
+    enregistrerSession(utilisateurActuel);
+    afficherVueGestionnaire();
   } else {
-    const wid = $('worker-select').value;
-    if (!wid) return;
-    const w = Store.data.workers.find(x=>x.id===wid);
-    currentUser = { role: 'worker', id: wid, name: w.name, workerRole: w.role };
-    saveSession(currentUser);
-    showWorkerView();
+    const idOuvrier = $('selection-ouvrier').value;
+    if (!idOuvrier) return;
+    const o = Stockage.donnees.ouvriers.find(x=>x.id===idOuvrier);
+    utilisateurActuel = { role: 'ouvrier', id: idOuvrier, nom: o.nom, metier: o.metier };
+    enregistrerSession(utilisateurActuel);
+    afficherVueOuvrier();
   }
 }
 
-function logout() {
-  GPS.stop(); clearSession(); currentUser = null;
-  clearInterval(clockInterval);
-  showView('login');
-  selectedRole = null;
-  $('role-manager').classList.remove('selected');
-  $('role-worker').classList.remove('selected');
-  $('worker-select-section').style.display = 'none';
-  $('login-btn').disabled = true;
+function seDeconnecter() {
+  GPS.arreter(); effacerSession(); utilisateurActuel = null;
+  clearInterval(intervalleHorloge);
+  afficherVue('connexion');
+  roleSelectionne = null;
+  $('role-gestionnaire').classList.remove('selectionne');
+  $('role-ouvrier').classList.remove('selectionne');
+  $('section-selection-ouvrier').style.display = 'none';
+  $('bouton-connexion').disabled = true;
 }
 
 /* ═══════════════════════════════════════════════════════════
-   VIEW MANAGEMENT
+   GESTION DES VUES
 ═══════════════════════════════════════════════════════════ */
-function showView(name) {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  const v = $(`view-${name}`);
-  if (v) v.classList.add('active');
+function afficherVue(nom) {
+  document.querySelectorAll('.vue').forEach(v => v.classList.remove('actif'));
+  const v = $(`vue-${nom}`);
+  if (v) v.classList.add('actif');
 }
 
 /* ═══════════════════════════════════════════════════════════
-   WORKER VIEW
+   VUE OUVRIER
 ═══════════════════════════════════════════════════════════ */
-let clockInterval = null;
+let intervalleHorloge = null;
 
-function showWorkerView() {
-  showView('worker');
-  const u = currentUser;
-  $('w-header-name').textContent = u.name;
-  $('w-header-avatar').textContent = initials(u.name);
-  $('w-header-avatar').style.background = avatarColor(u.name);
+function afficherVueOuvrier() {
+  afficherVue('ouvrier');
+  const u = utilisateurActuel;
+  $('nom-entete-ouvrier').textContent = u.nom;
+  $('avatar-entete-ouvrier').textContent = initiales(u.nom);
+  $('avatar-entete-ouvrier').style.background = couleurAvatar(u.nom);
 
-  // Live clock
-  clearInterval(clockInterval);
-  function tick() {
-    const now = new Date();
-    $('w-time').textContent = now.toLocaleTimeString('fr-BE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    $('w-date').textContent = now.toLocaleDateString('fr-BE', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+  // Horloge en direct
+  clearInterval(intervalleHorloge);
+  function actualiserHorloge() {
+    const maintenant = new Date();
+    $('heure-ouvrier').textContent = maintenant.toLocaleTimeString('fr-BE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    $('date-ouvrier').textContent = maintenant.toLocaleDateString('fr-BE', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
   }
-  tick(); clockInterval = setInterval(tick, 1000);
+  actualiserHorloge(); intervalleHorloge = setInterval(actualiserHorloge, 1000);
 
-  updateWorkerStatus();
-  renderWorkerHistory();
+  mettreAJourStatutOuvrier();
+  afficherHistoriqueOuvrier();
 
   // GPS
-  GPS.onUpdate = pos => updateGPSDisplay(pos);
-  GPS.start();
-  updateGPSDisplay(GPS.position);
-  if (!GPS.position) { $('w-gps-status').textContent = 'Demande de permission GPS…'; }
+  GPS.surMiseAJour = pos => mettreAJourAffichageGPS(pos);
+  GPS.demarrer();
+  mettreAJourAffichageGPS(GPS.position);
+  if (!GPS.position) { $('statut-gps-ouvrier').textContent = 'Demande de permission GPS…'; }
 }
 
-function updateWorkerStatus() {
-  const today = todayStr();
-  const punches = Store.data.punches.filter(p=>p.workerId===currentUser.id && p.timestamp.startsWith(today));
-  punches.sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+function mettreAJourStatutOuvrier() {
+  const aujourdhui = dateAujourdhui();
+  const pointages = Stockage.donnees.pointages.filter(p=>p.idOuvrier===utilisateurActuel.id && p.horodatage.startsWith(aujourdhui));
+  pointages.sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
 
-  const last = punches[punches.length-1];
-  const isPresent = last && last.type === 'entree';
+  const dernier = pointages[pointages.length-1];
+  const estPresent = dernier && dernier.type === 'entree';
 
-  if (isPresent) {
-    $('w-status-text').textContent = 'Présent';
-    $('w-status-badge').innerHTML = '<span class="badge badge-green"><span class="dot dot-green dot-pulse"></span>En chantier</span>';
-    const since = new Date(last.timestamp);
-    $('w-status-since').textContent = `Depuis ${fmtTimeShort(since)} · ${formatDuration(Date.now()-since)}`;
-    // Punch button → sortie (red)
-    const btn = $('punch-btn');
+  if (estPresent) {
+    $('texte-statut-ouvrier').textContent = 'Présent';
+    $('badge-statut-ouvrier').innerHTML = '<span class="badge badge-vert"><span class="point point-vert point-pulsation"></span>En chantier</span>';
+    const depuis = new Date(dernier.horodatage);
+    $('depuis-statut-ouvrier').textContent = `Depuis ${formaterHeureCourte(depuis)} · ${formaterDuree(Date.now()-depuis)}`;
+    // Bouton de pointage → sortie (rouge)
+    const btn = $('bouton-pointage');
     btn.style.background = 'linear-gradient(135deg, #B91C1C, #991B1B)';
     btn.style.boxShadow = '0 8px 32px rgba(185,28,28,.35)';
-    $('punch-label').textContent = 'Pointer la sortie';
-    $('punch-sub').textContent = 'Appuyer pour quitter';
-    $('punch-icon').innerHTML = '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/>';
-    $('punch-ring').style.borderColor = '#FCA5A5';
-    $('punch-ring').classList.add('active');
+    $('libelle-pointage').textContent = 'Pointer la sortie';
+    $('sous-libelle-pointage').textContent = 'Appuyer pour quitter';
+    $('icone-pointage').innerHTML = '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/>';
+    $('anneau-pointage').style.borderColor = '#FCA5A5';
+    $('anneau-pointage').classList.add('actif');
   } else {
-    $('w-status-text').textContent = 'Absent';
-    $('w-status-badge').innerHTML = '<span class="badge badge-grey">Non pointé</span>';
-    if (last && last.type === 'sortie') {
-      $('w-status-since').textContent = `Sorti à ${fmtTimeShort(new Date(last.timestamp))}`;
+    $('texte-statut-ouvrier').textContent = 'Absent';
+    $('badge-statut-ouvrier').innerHTML = '<span class="badge badge-gris">Non pointé</span>';
+    if (dernier && dernier.type === 'sortie') {
+      $('depuis-statut-ouvrier').textContent = `Sorti à ${formaterHeureCourte(new Date(dernier.horodatage))}`;
     } else {
-      $('w-status-since').textContent = 'Pas encore pointé aujourd\'hui';
+      $('depuis-statut-ouvrier').textContent = 'Pas encore pointé aujourd\'hui';
     }
-    const btn = $('punch-btn');
+    const btn = $('bouton-pointage');
     btn.style.background = 'linear-gradient(135deg, #15803D, #166534)';
     btn.style.boxShadow = '0 8px 32px rgba(21,128,61,.35)';
-    $('punch-label').textContent = 'Pointer l\'entrée';
-    $('punch-sub').textContent = 'Appuyer pour pointer';
-    $('punch-icon').innerHTML = '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>';
-    $('punch-ring').style.borderColor = '#86EFAC';
-    $('punch-ring').classList.add('active');
+    $('libelle-pointage').textContent = 'Pointer l\'entrée';
+    $('sous-libelle-pointage').textContent = 'Appuyer pour pointer';
+    $('icone-pointage').innerHTML = '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>';
+    $('anneau-pointage').style.borderColor = '#86EFAC';
+    $('anneau-pointage').classList.add('actif');
   }
 }
 
-function updateGPSDisplay(pos) {
+function mettreAJourAffichageGPS(pos) {
   if (!pos) {
-    $('w-gps-badge').innerHTML = '<span class="badge badge-grey">Recherche…</span>';
-    drawRadarNoGPS();
+    $('badge-gps-ouvrier').innerHTML = '<span class="badge badge-gris">Recherche…</span>';
+    dessinerRadarSansGPS();
     return;
   }
-  $('w-gps-status').textContent = `Position obtenue (±${Math.round(pos.acc)}m)`;
-  $('w-gps-coords').textContent = `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
-  $('w-gps-badge').innerHTML = '<span class="badge badge-green">✓ GPS</span>';
+  $('statut-gps-ouvrier').textContent = `Position obtenue (±${Math.round(pos.precision)}m)`;
+  $('coordonnees-gps-ouvrier').textContent = `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
+  $('badge-gps-ouvrier').innerHTML = '<span class="badge badge-vert">✓ GPS</span>';
 
-  const result = GPS.getClosestZone(pos.lat, pos.lng);
-  if (result) {
-    const { zone, dist, inZone } = result;
-    $('w-zone-dot').className = `dot ${inZone?'dot-green dot-pulse':'dot-amber'}`;
-    $('w-zone-text').textContent = inZone
-      ? `✓ Dans la zone : ${zone.name}`
-      : `Hors zone — ${formatDistM(dist)} de « ${zone.name} »`;
-    $('w-zone-text').style.color = inZone ? 'var(--green)' : 'var(--amber)';
-    $('w-radar-dist').textContent = `${formatDistM(dist)} du centre`;
-    drawRadar(pos, result);
+  const resultat = GPS.zoneLaPlusProche(pos.lat, pos.lng);
+  if (resultat) {
+    const { zone, distance, dansZone } = resultat;
+    $('point-zone-ouvrier').className = `point ${dansZone?'point-vert point-pulsation':'point-ambre'}`;
+    $('texte-zone-ouvrier').textContent = dansZone
+      ? `✓ Dans la zone : ${zone.nom}`
+      : `Hors zone — ${formaterDistance(distance)} de « ${zone.nom} »`;
+    $('texte-zone-ouvrier').style.color = dansZone ? 'var(--vert)' : 'var(--ambre)';
+    $('distance-radar-ouvrier').textContent = `${formaterDistance(distance)} du centre`;
+    dessinerRadar(pos, resultat);
   } else {
-    $('w-zone-dot').className = 'dot dot-grey';
-    $('w-zone-text').textContent = 'Aucune zone configurée';
-    $('w-zone-text').style.color = 'var(--txt-2)';
-    drawRadarNoGPS();
+    $('point-zone-ouvrier').className = 'point point-gris';
+    $('texte-zone-ouvrier').textContent = 'Aucune zone configurée';
+    $('texte-zone-ouvrier').style.color = 'var(--texte-2)';
+    dessinerRadarSansGPS();
   }
 }
 
-function doPunch() {
+function pointer() {
   if (!GPS.position) {
-    // Demo mode: allow punch without GPS
-    const pos = { lat: 50.8503 + (Math.random()-.5)*0.002, lng: 4.3517 + (Math.random()-.5)*0.002, acc: 15 };
+    // Mode démo : permet de pointer sans GPS
+    const pos = { lat: 50.8503 + (Math.random()-.5)*0.002, lng: 4.3517 + (Math.random()-.5)*0.002, precision: 15 };
     GPS.position = pos;
-    updateGPSDisplay(pos);
+    mettreAJourAffichageGPS(pos);
   }
   const pos = GPS.position;
-  const today = todayStr();
-  const punches = Store.data.punches.filter(p=>p.workerId===currentUser.id && p.timestamp.startsWith(today));
-  punches.sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
-  const last = punches[punches.length-1];
-  const type = (!last || last.type==='sortie') ? 'entree' : 'sortie';
+  const aujourdhui = dateAujourdhui();
+  const pointages = Stockage.donnees.pointages.filter(p=>p.idOuvrier===utilisateurActuel.id && p.horodatage.startsWith(aujourdhui));
+  pointages.sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+  const dernier = pointages[pointages.length-1];
+  const type = (!dernier || dernier.type==='sortie') ? 'entree' : 'sortie';
 
-  const result = GPS.getClosestZone(pos.lat, pos.lng);
-  const punch = {
-    id: uid(),
-    workerId: currentUser.id,
+  const resultat = GPS.zoneLaPlusProche(pos.lat, pos.lng);
+  const pointage = {
+    id: genererId(),
+    idOuvrier: utilisateurActuel.id,
     type, lat: pos.lat, lng: pos.lng,
-    timestamp: new Date().toISOString(),
-    zoneId: result?.zone?.id || null,
-    inZone: result?.inZone || false
+    horodatage: new Date().toISOString(),
+    idZone: resultat?.zone?.id || null,
+    dansZone: resultat?.dansZone || false
   };
-  Store.data.punches.push(punch);
-  Store.save();
+  Stockage.donnees.pointages.push(pointage);
+  Stockage.enregistrer();
 
-  const label = type==='entree' ? 'Entrée pointée' : 'Sortie pointée';
-  const warn = !punch.inZone && Store.data.zones.length > 0 ? ' (hors zone)' : '';
-  showToast(`${label} à ${fmtTimeShort(new Date())}${warn}`, punch.inZone||!Store.data.zones.length?'success':'warn');
+  const libelle = type==='entree' ? 'Entrée pointée' : 'Sortie pointée';
+  const alerte = !pointage.dansZone && Stockage.donnees.zones.length > 0 ? ' (hors zone)' : '';
+  afficherNotification(`${libelle} à ${formaterHeureCourte(new Date())}${alerte}`, pointage.dansZone||!Stockage.donnees.zones.length?'succes':'alerte');
 
-  updateWorkerStatus();
-  renderWorkerHistory();
+  mettreAJourStatutOuvrier();
+  afficherHistoriqueOuvrier();
 }
 
-function renderWorkerHistory() {
-  const today = todayStr();
-  const punches = Store.data.punches
-    .filter(p=>p.workerId===currentUser.id && p.timestamp.startsWith(today))
-    .sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+function afficherHistoriqueOuvrier() {
+  const aujourdhui = dateAujourdhui();
+  const pointages = Stockage.donnees.pointages
+    .filter(p=>p.idOuvrier===utilisateurActuel.id && p.horodatage.startsWith(aujourdhui))
+    .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
 
-  const el = $('w-history-list');
-  if (!punches.length) {
-    el.innerHTML = '<div class="no-history">Aucun pointage aujourd\'hui</div>';
+  const el = $('liste-historique-ouvrier');
+  if (!pointages.length) {
+    el.innerHTML = '<div class="aucun-historique">Aucun pointage aujourd\'hui</div>';
     return;
   }
-  el.innerHTML = punches.map(p => {
-    const zone = p.zoneId ? Store.data.zones.find(z=>z.id===p.zoneId) : null;
-    const isIn = p.type==='entree';
-    return `<div class="history-item">
-      <div class="history-type-icon" style="background:${isIn?'var(--green-lt)':'var(--red-lt)'};">
-        ${isIn?'⬆️':'⬇️'}
+  el.innerHTML = pointages.map(p => {
+    const zone = p.idZone ? Stockage.donnees.zones.find(z=>z.id===p.idZone) : null;
+    const estEntree = p.type==='entree';
+    return `<div class="element-historique">
+      <div class="icone-type-historique" style="background:${estEntree?'var(--vert-clair)':'var(--rouge-clair)'};">
+        ${estEntree?'⬆️':'⬇️'}
       </div>
-      <div class="history-info">
-        <div class="history-type" style="color:${isIn?'var(--green)':'var(--red)'};">${isIn?'Entrée':'Sortie'}</div>
-        <div class="history-meta">${zone?zone.name:'Hors zone'}${!p.inZone&&Store.data.zones.length?' · ⚠️ Hors périmètre':''}</div>
+      <div class="info-historique">
+        <div class="type-historique" style="color:${estEntree?'var(--vert)':'var(--rouge)'};">${estEntree?'Entrée':'Sortie'}</div>
+        <div class="meta-historique">${zone?zone.nom:'Hors zone'}${!p.dansZone&&Stockage.donnees.zones.length?' · ⚠️ Hors périmètre':''}</div>
       </div>
-      <div class="history-time">${fmtTimeShort(new Date(p.timestamp))}</div>
+      <div class="heure-historique">${formaterHeureCourte(new Date(p.horodatage))}</div>
     </div>`;
   }).join('');
 }
 
-/* ─── RADAR CANVAS ─── */
-function drawRadar(workerPos, zoneResult) {
-  const canvas = $('w-radar');
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  const cx = W/2, cy = H/2;
-  const dark = isDarkMode();
-  const { zone, dist, inZone } = zoneResult;
+/* ─── CANEVAS RADAR ─── */
+function dessinerRadar(positionOuvrier, resultatZone) {
+  const canevas = $('radar-ouvrier');
+  const ctx = canevas.getContext('2d');
+  const L = canevas.width, H = canevas.height;
+  const cx = L/2, cy = H/2;
+  const sombre = modeSombreActif();
+  const { zone, distance, dansZone } = resultatZone;
 
-  ctx.clearRect(0,0,W,H);
+  ctx.clearRect(0,0,L,H);
 
-  // Background (clipped to circle)
+  // Fond (découpé en cercle)
   ctx.save();
   ctx.beginPath(); ctx.arc(cx,cy,cx,0,Math.PI*2); ctx.clip();
-  ctx.fillStyle = dark ? '#1C2333' : '#F8FAFC';
-  ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = sombre ? '#1C2333' : '#F8FAFC';
+  ctx.fillRect(0,0,L,H);
 
-  // Grid rings
+  // Anneaux de la grille
   for (let i=1; i<=3; i++) {
     ctx.beginPath(); ctx.arc(cx,cy,(cx-12)*i/3,0,Math.PI*2);
-    ctx.strokeStyle = dark?'#30363D':'#E2E8F0';
+    ctx.strokeStyle = sombre?'#30363D':'#E2E8F0';
     ctx.lineWidth = 1; ctx.stroke();
   }
-  // Crosshairs
+  // Réticule
   ctx.beginPath(); ctx.moveTo(cx,12); ctx.lineTo(cx,H-12);
-  ctx.moveTo(12,cy); ctx.lineTo(W-12,cy);
-  ctx.strokeStyle = dark?'#30363D':'#E2E8F0'; ctx.lineWidth=1; ctx.stroke();
+  ctx.moveTo(12,cy); ctx.lineTo(L-12,cy);
+  ctx.strokeStyle = sombre?'#30363D':'#E2E8F0'; ctx.lineWidth=1; ctx.stroke();
 
-  // Scale: zone radius maps to half the canvas radius
-  const maxDisp = cx - 16;
-  const scale = maxDisp / (zone.radius * 2.5);
+  // Échelle : le rayon de la zone correspond à la moitié du rayon du canevas
+  const dispMax = cx - 16;
+  const echelle = dispMax / (zone.rayon * 2.5);
 
-  // Zone circle
-  const zoneDispR = zone.radius * scale;
-  ctx.beginPath(); ctx.arc(cx,cy,zoneDispR,0,Math.PI*2);
-  ctx.fillStyle = inZone ? 'rgba(21,128,61,.12)' : 'rgba(29,78,216,.08)';
+  // Cercle de la zone
+  const rayonAffiche = zone.rayon * echelle;
+  ctx.beginPath(); ctx.arc(cx,cy,rayonAffiche,0,Math.PI*2);
+  ctx.fillStyle = dansZone ? 'rgba(21,128,61,.12)' : 'rgba(29,78,216,.08)';
   ctx.fill();
-  ctx.strokeStyle = inZone ? '#15803D' : '#1D4ED8';
+  ctx.strokeStyle = dansZone ? '#15803D' : '#1D4ED8';
   ctx.lineWidth = 2; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
 
-  // Worker position
-  const bearing = geoBearing(zone.lat, zone.lng, workerPos.lat, workerPos.lng);
-  const dispDist = Math.min(dist * scale, maxDisp - 8);
-  const rad = bearing * Math.PI / 180;
-  const wx = cx + dispDist * Math.sin(rad);
-  const wy = cy - dispDist * Math.cos(rad);
+  // Position de l'ouvrier
+  const cap = capGeo(zone.lat, zone.lng, positionOuvrier.lat, positionOuvrier.lng);
+  const distAffichee = Math.min(distance * echelle, dispMax - 8);
+  const rad = cap * Math.PI / 180;
+  const ox = cx + distAffichee * Math.sin(rad);
+  const oy = cy - distAffichee * Math.cos(rad);
 
-  // Line from center to worker
-  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(wx,wy);
-  ctx.strokeStyle = dark?'#484F58':'#CBD5E1'; ctx.lineWidth=1; ctx.stroke();
+  // Ligne du centre vers l'ouvrier
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(ox,oy);
+  ctx.strokeStyle = sombre?'#484F58':'#CBD5E1'; ctx.lineWidth=1; ctx.stroke();
 
-  // Zone center dot
+  // Point central de la zone
   ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2);
   ctx.fillStyle = '#1D4ED8'; ctx.fill();
 
-  // Worker dot
-  ctx.beginPath(); ctx.arc(wx,wy,9,0,Math.PI*2);
-  ctx.fillStyle = inZone ? '#15803D' : '#B91C1C'; ctx.fill();
-  ctx.strokeStyle = dark?'#1C2333':'#fff'; ctx.lineWidth=2.5; ctx.stroke();
+  // Point de l'ouvrier
+  ctx.beginPath(); ctx.arc(ox,oy,9,0,Math.PI*2);
+  ctx.fillStyle = dansZone ? '#15803D' : '#B91C1C'; ctx.fill();
+  ctx.strokeStyle = sombre?'#1C2333':'#fff'; ctx.lineWidth=2.5; ctx.stroke();
 
-  // "Vous" label
-  ctx.fillStyle = dark?'#E6EDF3':'#0F172A';
+  // Étiquette « Vous »
+  ctx.fillStyle = sombre?'#E6EDF3':'#0F172A';
   ctx.font = 'bold 10px system-ui';
   ctx.textAlign = 'center';
-  ctx.fillText('Vous', wx, wy - 15);
+  ctx.fillText('Vous', ox, oy - 15);
 
   ctx.restore();
 
-  // Outer ring
+  // Anneau extérieur
   ctx.beginPath(); ctx.arc(cx,cy,cx-1,0,Math.PI*2);
-  ctx.strokeStyle = dark?'#30363D':'#E2E8F0'; ctx.lineWidth=2; ctx.stroke();
+  ctx.strokeStyle = sombre?'#30363D':'#E2E8F0'; ctx.lineWidth=2; ctx.stroke();
 }
 
-function drawRadarNoGPS() {
-  const canvas = $('w-radar');
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  const cx = W/2, cy = H/2;
-  const dark = isDarkMode();
-  ctx.clearRect(0,0,W,H);
+function dessinerRadarSansGPS() {
+  const canevas = $('radar-ouvrier');
+  const ctx = canevas.getContext('2d');
+  const L = canevas.width, H = canevas.height;
+  const cx = L/2, cy = H/2;
+  const sombre = modeSombreActif();
+  ctx.clearRect(0,0,L,H);
   ctx.save();
   ctx.beginPath(); ctx.arc(cx,cy,cx,0,Math.PI*2); ctx.clip();
-  ctx.fillStyle = dark?'#1C2333':'#F8FAFC'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = sombre?'#1C2333':'#F8FAFC'; ctx.fillRect(0,0,L,H);
   for (let i=1;i<=3;i++){
     ctx.beginPath();ctx.arc(cx,cy,(cx-12)*i/3,0,Math.PI*2);
-    ctx.strokeStyle=dark?'#30363D':'#E2E8F0';ctx.lineWidth=1;ctx.stroke();
+    ctx.strokeStyle=sombre?'#30363D':'#E2E8F0';ctx.lineWidth=1;ctx.stroke();
   }
-  ctx.fillStyle = dark?'#484F58':'#94A3B8';
+  ctx.fillStyle = sombre?'#484F58':'#94A3B8';
   ctx.font = '12px system-ui'; ctx.textAlign='center';
   ctx.fillText('GPS non disponible', cx, cy);
   ctx.restore();
   ctx.beginPath();ctx.arc(cx,cy,cx-1,0,Math.PI*2);
-  ctx.strokeStyle=dark?'#30363D':'#E2E8F0';ctx.lineWidth=2;ctx.stroke();
+  ctx.strokeStyle=sombre?'#30363D':'#E2E8F0';ctx.lineWidth=2;ctx.stroke();
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MANAGER VIEW
+   VUE GESTIONNAIRE
 ═══════════════════════════════════════════════════════════ */
-function showManagerView() {
-  showView('manager');
-  refreshManager();
-  renderZones();
-  initReportDates();
-  populateReportWorkers();
+function afficherVueGestionnaire() {
+  afficherVue('gestionnaire');
+  actualiserGestionnaire();
+  afficherZones();
+  initialiserDatesRapport();
+  remplirOuvriersRapport();
 }
 
-function switchTab(name, btn) {
-  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
-  btn.classList.add('active');
-  $(`tab-${name}`).classList.add('active');
+function changerOnglet(nom, btn) {
+  document.querySelectorAll('.bouton-onglet').forEach(b=>b.classList.remove('actif'));
+  document.querySelectorAll('.panneau-onglet').forEach(p=>p.classList.remove('actif'));
+  btn.classList.add('actif');
+  $(`onglet-${nom}`).classList.add('actif');
 }
 
-function refreshManager() {
-  const today = todayStr();
-  const workers = Store.data.workers;
+function actualiserGestionnaire() {
+  const aujourdhui = dateAujourdhui();
+  const ouvriers = Stockage.donnees.ouvriers;
 
-  let present=0, absent=0, outside=0;
-  const cards = workers.map(w => {
-    const todayPunches = Store.data.punches
-      .filter(p=>p.workerId===w.id && p.timestamp.startsWith(today))
-      .sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
-    const last = todayPunches[todayPunches.length-1];
-    const isPresent = last && last.type==='entree';
-    const isOutside = isPresent && !last.inZone && Store.data.zones.length>0;
+  let presents=0, absents=0, horsZone=0;
+  const cartes = ouvriers.map(o => {
+    const pointagesJour = Stockage.donnees.pointages
+      .filter(p=>p.idOuvrier===o.id && p.horodatage.startsWith(aujourdhui))
+      .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+    const dernier = pointagesJour[pointagesJour.length-1];
+    const estPresent = dernier && dernier.type==='entree';
+    const estHorsZone = estPresent && !dernier.dansZone && Stockage.donnees.zones.length>0;
 
-    if (isPresent) { present++; if (isOutside) outside++; }
-    else absent++;
+    if (estPresent) { presents++; if (estHorsZone) horsZone++; }
+    else absents++;
 
-    const firstIn = todayPunches.find(p=>p.type==='entree');
-    const totalMs = calcTotalTime(todayPunches);
-    const zone = last?.zoneId ? Store.data.zones.find(z=>z.id===last.zoneId) : null;
-    const color = avatarColor(w.name);
+    const premiereEntree = pointagesJour.find(p=>p.type==='entree');
+    const tempsTotal = calculerTempsTotal(pointagesJour);
+    const zone = dernier?.idZone ? Stockage.donnees.zones.find(z=>z.id===dernier.idZone) : null;
+    const couleur = couleurAvatar(o.nom);
 
-    return `<div class="card worker-card">
-      <div class="worker-card-top">
-        <div class="worker-card-id">
-          <div class="worker-card-avatar" style="background:${color};">${initials(w.name)}</div>
+    return `<div class="carte carte-ouvrier">
+      <div class="haut-carte-ouvrier">
+        <div class="identite-carte-ouvrier">
+          <div class="avatar-carte-ouvrier" style="background:${couleur};">${initiales(o.nom)}</div>
           <div>
-            <div class="worker-card-name">${w.name}</div>
-            <div class="worker-card-role">${w.role}</div>
+            <div class="nom-carte-ouvrier">${o.nom}</div>
+            <div class="role-carte-ouvrier">${o.metier}</div>
           </div>
         </div>
-        ${isPresent
-          ? isOutside
-            ? '<span class="badge badge-amber"><span class="dot dot-amber dot-pulse"></span>Hors zone</span>'
-            : '<span class="badge badge-green"><span class="dot dot-green dot-pulse"></span>Présent</span>'
-          : '<span class="badge badge-grey">Absent</span>'
+        ${estPresent
+          ? estHorsZone
+            ? '<span class="badge badge-ambre"><span class="point point-ambre point-pulsation"></span>Hors zone</span>'
+            : '<span class="badge badge-vert"><span class="point point-vert point-pulsation"></span>Présent</span>'
+          : '<span class="badge badge-gris">Absent</span>'
         }
       </div>
-      <div class="worker-card-stats">
-        <div class="worker-stat-row">
+      <div class="stats-carte-ouvrier">
+        <div class="ligne-stat-ouvrier">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-          <span class="worker-stat-label">Entrée :</span>
-          <span class="worker-stat-val">${firstIn?fmtTimeShort(new Date(firstIn.timestamp)):'—'}</span>
+          <span class="libelle-stat-ouvrier">Entrée :</span>
+          <span class="valeur-stat-ouvrier">${premiereEntree?formaterHeureCourte(new Date(premiereEntree.horodatage)):'—'}</span>
         </div>
-        <div class="worker-stat-row">
+        <div class="ligne-stat-ouvrier">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0A9 9 0 0 0 3 12"/><path d="M12 7v5l3 3"/></svg>
-          <span class="worker-stat-label">Temps travaillé :</span>
-          <span class="worker-stat-val">${totalMs>0?formatDuration(totalMs):'—'}</span>
+          <span class="libelle-stat-ouvrier">Temps travaillé :</span>
+          <span class="valeur-stat-ouvrier">${tempsTotal>0?formaterDuree(tempsTotal):'—'}</span>
         </div>
-        <div class="worker-stat-row">
+        <div class="ligne-stat-ouvrier">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-          <span class="worker-stat-label">Zone :</span>
-          <span class="worker-stat-val">${zone?zone.name:isPresent?'Hors zone':'—'}</span>
+          <span class="libelle-stat-ouvrier">Zone :</span>
+          <span class="valeur-stat-ouvrier">${zone?zone.nom:estPresent?'Hors zone':'—'}</span>
         </div>
       </div>
     </div>`;
   });
 
-  $('stat-present').textContent = present;
-  $('stat-absent').textContent = absent;
-  $('stat-outside').textContent = outside;
-  $('mgr-worker-grid').innerHTML = cards.join('');
+  $('stat-presents').textContent = presents;
+  $('stat-absents').textContent = absents;
+  $('stat-hors-zone').textContent = horsZone;
+  $('grille-ouvriers-gestionnaire').innerHTML = cartes.join('');
 }
 
-function calcTotalTime(punches) {
+function calculerTempsTotal(pointages) {
   let total = 0;
-  for (let i=0; i<punches.length-1; i++) {
-    if (punches[i].type==='entree' && punches[i+1].type==='sortie') {
-      total += new Date(punches[i+1].timestamp) - new Date(punches[i].timestamp);
+  for (let i=0; i<pointages.length-1; i++) {
+    if (pointages[i].type==='entree' && pointages[i+1].type==='sortie') {
+      total += new Date(pointages[i+1].horodatage) - new Date(pointages[i].horodatage);
     }
   }
-  // If last punch is 'entree', count time until now
-  const last = punches[punches.length-1];
-  if (last && last.type==='entree') total += Date.now() - new Date(last.timestamp);
+  // Si le dernier pointage est une entrée, compter le temps jusqu'à maintenant
+  const dernier = pointages[pointages.length-1];
+  if (dernier && dernier.type==='entree') total += Date.now() - new Date(dernier.horodatage);
   return total;
 }
 
 /* ─── ZONES ─── */
-function renderZones() {
-  const el = $('zones-list');
-  if (!Store.data.zones.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📍</div><div class="empty-state-text">Aucune zone définie. Ajoutez votre premier chantier.</div></div>';
+function afficherZones() {
+  const el = $('liste-zones');
+  if (!Stockage.donnees.zones.length) {
+    el.innerHTML = '<div class="etat-vide"><div class="icone-etat-vide">📍</div><div class="texte-etat-vide">Aucune zone définie. Ajoutez votre premier chantier.</div></div>';
     return;
   }
-  el.innerHTML = Store.data.zones.map(z => {
-    const today = todayStr();
-    const presentWorkers = Store.data.workers.filter(w => {
-      const punches = Store.data.punches
-        .filter(p=>p.workerId===w.id && p.timestamp.startsWith(today))
-        .sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
-      const last = punches[punches.length-1];
-      return last && last.type==='entree' && last.zoneId===z.id;
+  el.innerHTML = Stockage.donnees.zones.map(z => {
+    const aujourdhui = dateAujourdhui();
+    const ouvriersPresents = Stockage.donnees.ouvriers.filter(o => {
+      const pointages = Stockage.donnees.pointages
+        .filter(p=>p.idOuvrier===o.id && p.horodatage.startsWith(aujourdhui))
+        .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+      const dernier = pointages[pointages.length-1];
+      return dernier && dernier.type==='entree' && dernier.idZone===z.id;
     });
-    const chips = presentWorkers.length
-      ? presentWorkers.map(w=>`<span class="zone-worker-chip" style="border-color:${avatarColor(w.name)}33;">${w.name}</span>`).join('')
-      : '<span style="font-size:12px;color:var(--txt-3);">Personne en ce moment</span>';
-    return `<div class="card zone-card">
-      <div class="zone-card-top">
+    const puces = ouvriersPresents.length
+      ? ouvriersPresents.map(o=>`<span class="puce-ouvrier-zone" style="border-color:${couleurAvatar(o.nom)}33;">${o.nom}</span>`).join('')
+      : '<span style="font-size:12px;color:var(--texte-3);">Personne en ce moment</span>';
+    return `<div class="carte carte-zone">
+      <div class="haut-carte-zone">
         <div>
-          <div class="zone-name">📍 ${z.name}</div>
-          <div class="zone-meta">Rayon ${z.radius}m · ${z.lat.toFixed(4)}°N, ${z.lng.toFixed(4)}°E</div>
+          <div class="nom-zone">📍 ${z.nom}</div>
+          <div class="meta-zone">Rayon ${z.rayon}m · ${z.lat.toFixed(4)}°N, ${z.lng.toFixed(4)}°E</div>
         </div>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red);flex-shrink:0;" onclick="deleteZone('${z.id}')">Supprimer</button>
+        <button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);flex-shrink:0;" onclick="supprimerZone('${z.id}')">Supprimer</button>
       </div>
-      <div class="zone-workers">${chips}</div>
+      <div class="ouvriers-zone">${puces}</div>
     </div>`;
   }).join('');
 }
 
-function addZone() {
-  const name = $('zone-name').value.trim();
-  const lat = parseFloat($('zone-lat').value);
-  const lng = parseFloat($('zone-lng').value);
-  const radius = parseInt($('zone-radius').value);
-  if (!name||isNaN(lat)||isNaN(lng)||isNaN(radius)||radius<10) {
-    showToast('Veuillez remplir tous les champs correctement', 'error');
+function ajouterZone() {
+  const nom = $('nom-zone').value.trim();
+  const lat = parseFloat($('lat-zone').value);
+  const lng = parseFloat($('lng-zone').value);
+  const rayon = parseInt($('rayon-zone').value);
+  if (!nom||isNaN(lat)||isNaN(lng)||isNaN(rayon)||rayon<10) {
+    afficherNotification('Veuillez remplir tous les champs correctement', 'erreur');
     return;
   }
   if (lat<-90||lat>90||lng<-180||lng>180) {
-    showToast('Coordonnées GPS invalides', 'error');
+    afficherNotification('Coordonnées GPS invalides', 'erreur');
     return;
   }
-  Store.data.zones.push({ id:uid(), name, lat, lng, radius });
-  Store.save();
-  $('zone-name').value=''; $('zone-lat').value=''; $('zone-lng').value=''; $('zone-radius').value='';
-  renderZones();
-  showToast(`Zone « ${name} » ajoutée`, 'success');
+  Stockage.donnees.zones.push({ id:genererId(), nom, lat, lng, rayon });
+  Stockage.enregistrer();
+  $('nom-zone').value=''; $('lat-zone').value=''; $('lng-zone').value=''; $('rayon-zone').value='';
+  afficherZones();
+  afficherNotification(`Zone « ${nom} » ajoutée`, 'succes');
 }
 
-function deleteZone(id) {
-  const z = Store.data.zones.find(x=>x.id===id);
-  openDialog('Supprimer la zone', `Supprimer « ${z?.name} » ? Les pointages existants ne seront pas affectés.`, () => {
-    Store.data.zones = Store.data.zones.filter(x=>x.id!==id);
-    Store.save();
-    renderZones();
-    showToast('Zone supprimée', 'info');
+function supprimerZone(id) {
+  const z = Stockage.donnees.zones.find(x=>x.id===id);
+  ouvrirDialogue('Supprimer la zone', `Supprimer « ${z?.nom} » ? Les pointages existants ne seront pas affectés.`, () => {
+    Stockage.donnees.zones = Stockage.donnees.zones.filter(x=>x.id!==id);
+    Stockage.enregistrer();
+    afficherZones();
+    afficherNotification('Zone supprimée', 'info');
   });
 }
 
-function useCurrentLocation() {
-  if (!navigator.geolocation) { showToast('GPS non disponible', 'error'); return; }
-  showToast('Récupération de la position…', 'info');
+function utiliserPositionActuelle() {
+  if (!navigator.geolocation) { afficherNotification('GPS non disponible', 'erreur'); return; }
+  afficherNotification('Récupération de la position…', 'info');
   navigator.geolocation.getCurrentPosition(pos => {
-    $('zone-lat').value = pos.coords.latitude.toFixed(6);
-    $('zone-lng').value = pos.coords.longitude.toFixed(6);
-    showToast('Position récupérée', 'success');
+    $('lat-zone').value = pos.coords.latitude.toFixed(6);
+    $('lng-zone').value = pos.coords.longitude.toFixed(6);
+    afficherNotification('Position récupérée', 'succes');
   }, () => {
-    // Fallback: Brussels center
-    $('zone-lat').value = '50.8503';
-    $('zone-lng').value = '4.3517';
-    showToast('GPS indisponible — position par défaut (Bruxelles)', 'warn');
+    // Repli : centre de Bruxelles
+    $('lat-zone').value = '50.8503';
+    $('lng-zone').value = '4.3517';
+    afficherNotification('GPS indisponible — position par défaut (Bruxelles)', 'alerte');
   });
 }
 
-/* ─── REPORTS ─── */
-let reportData = [];
+/* ─── RAPPORTS ─── */
+let donneesRapport = [];
 
-function initReportDates() {
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1);
-  $('report-from').value = from.toISOString().slice(0,10);
-  $('report-to').value = todayStr();
+function initialiserDatesRapport() {
+  const maintenant = new Date();
+  const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1);
+  $('rapport-du').value = debutMois.toISOString().slice(0,10);
+  $('rapport-au').value = dateAujourdhui();
 }
 
-function populateReportWorkers() {
-  const sel = $('report-worker');
+function remplirOuvriersRapport() {
+  const sel = $('rapport-ouvrier');
   sel.innerHTML = '<option value="">Tous les ouvriers</option>';
-  Store.data.workers.forEach(w => {
-    const o = document.createElement('option');
-    o.value = w.id; o.textContent = w.name;
-    sel.appendChild(o);
+  Stockage.donnees.ouvriers.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.id; opt.textContent = o.nom;
+    sel.appendChild(opt);
   });
 }
 
-function generateReport() {
-  const from = $('report-from').value;
-  const to = $('report-to').value;
-  const wid = $('report-worker').value;
+function genererRapport() {
+  const du = $('rapport-du').value;
+  const au = $('rapport-au').value;
+  const idOuvrier = $('rapport-ouvrier').value;
 
-  if (!from||!to||from>to) { showToast('Sélectionnez une période valide', 'error'); return; }
+  if (!du||!au||du>au) { afficherNotification('Sélectionnez une période valide', 'erreur'); return; }
 
-  // Build per-worker per-day summary
-  const days = [];
-  const d = new Date(from);
-  while (d.toISOString().slice(0,10) <= to) { days.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+  // Construire le résumé par ouvrier et par jour
+  const jours = [];
+  const d = new Date(du);
+  while (d.toISOString().slice(0,10) <= au) { jours.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
 
-  const workers = wid ? Store.data.workers.filter(w=>w.id===wid) : Store.data.workers;
-  reportData = [];
+  const ouvriers = idOuvrier ? Stockage.donnees.ouvriers.filter(o=>o.id===idOuvrier) : Stockage.donnees.ouvriers;
+  donneesRapport = [];
 
-  for (const w of workers) {
-    for (const day of days) {
-      const punches = Store.data.punches
-        .filter(p=>p.workerId===w.id && p.timestamp.startsWith(day))
-        .sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
-      if (!punches.length) continue;
-      const firstIn = punches.find(p=>p.type==='entree');
-      const lastOut = [...punches].reverse().find(p=>p.type==='sortie');
-      const totalMs = calcTotalTime(punches);
-      const zone = firstIn?.zoneId ? Store.data.zones.find(z=>z.id===firstIn.zoneId) : null;
-      const outOfZone = punches.some(p=>!p.inZone && Store.data.zones.length>0);
-      reportData.push({ worker: w, day, firstIn, lastOut, totalMs, zone, outOfZone });
+  for (const o of ouvriers) {
+    for (const jour of jours) {
+      const pointages = Stockage.donnees.pointages
+        .filter(p=>p.idOuvrier===o.id && p.horodatage.startsWith(jour))
+        .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+      if (!pointages.length) continue;
+      const premiereEntree = pointages.find(p=>p.type==='entree');
+      const derniereSortie = [...pointages].reverse().find(p=>p.type==='sortie');
+      const tempsTotal = calculerTempsTotal(pointages);
+      const zone = premiereEntree?.idZone ? Stockage.donnees.zones.find(z=>z.id===premiereEntree.idZone) : null;
+      const horsZone = pointages.some(p=>!p.dansZone && Stockage.donnees.zones.length>0);
+      donneesRapport.push({ ouvrier: o, jour, premiereEntree, derniereSortie, tempsTotal, zone, horsZone });
     }
   }
 
-  const tbody = $('report-body');
-  if (!reportData.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--txt-3);">Aucun pointage pour cette période</td></tr>';
-    $('export-btn').style.display='none';
+  const corps = $('corps-rapport');
+  if (!donneesRapport.length) {
+    corps.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--texte-3);">Aucun pointage pour cette période</td></tr>';
+    $('bouton-export').style.display='none';
     return;
   }
 
-  tbody.innerHTML = reportData.map(r => `
+  corps.innerHTML = donneesRapport.map(r => `
     <tr>
       <td><div style="display:flex;align-items:center;gap:8px;">
-        <div style="width:24px;height:24px;border-radius:50%;background:${avatarColor(r.worker.name)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;font-family:var(--f-head);flex-shrink:0;">${initials(r.worker.name)}</div>
-        <span style="font-weight:500;">${r.worker.name}</span>
+        <div style="width:24px;height:24px;border-radius:50%;background:${couleurAvatar(r.ouvrier.nom)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;font-family:var(--police-titre);flex-shrink:0;">${initiales(r.ouvrier.nom)}</div>
+        <span style="font-weight:500;">${r.ouvrier.nom}</span>
       </div></td>
-      <td>${fmtDateShort(new Date(r.day))}</td>
-      <td>${r.firstIn?fmtTimeShort(new Date(r.firstIn.timestamp)):'—'}</td>
-      <td>${r.lastOut?fmtTimeShort(new Date(r.lastOut.timestamp)):'<span style="color:var(--green);font-size:11px;">En cours</span>'}</td>
-      <td><span style="font-weight:600;">${r.totalMs>0?formatDuration(r.totalMs):'—'}</span></td>
-      <td>${r.zone?r.zone.name:'<span style="color:var(--txt-3);">—</span>'}</td>
-      <td>${r.outOfZone
-        ? '<span class="badge badge-amber">⚠️ Hors zone</span>'
-        : '<span class="badge badge-green">✓ OK</span>'}</td>
+      <td>${formaterDateCourte(new Date(r.jour))}</td>
+      <td>${r.premiereEntree?formaterHeureCourte(new Date(r.premiereEntree.horodatage)):'—'}</td>
+      <td>${r.derniereSortie?formaterHeureCourte(new Date(r.derniereSortie.horodatage)):'<span style="color:var(--vert);font-size:11px;">En cours</span>'}</td>
+      <td><span style="font-weight:600;">${r.tempsTotal>0?formaterDuree(r.tempsTotal):'—'}</span></td>
+      <td>${r.zone?r.zone.nom:'<span style="color:var(--texte-3);">—</span>'}</td>
+      <td>${r.horsZone
+        ? '<span class="badge badge-ambre">⚠️ Hors zone</span>'
+        : '<span class="badge badge-vert">✓ OK</span>'}</td>
     </tr>
   `).join('');
-  $('export-btn').style.display='';
-  showToast(`${reportData.length} ligne(s) générée(s)`, 'success');
+  $('bouton-export').style.display='';
+  afficherNotification(`${donneesRapport.length} ligne(s) générée(s)`, 'succes');
 }
 
-function exportCSV() {
-  if (!reportData.length) return;
-  const headers = ['Ouvrier','Métier','Date','Entrée','Sortie','Durée (min)','Zone','Statut'];
-  const rows = reportData.map(r=>[
-    r.worker.name, r.worker.role,
-    fmtDateShort(new Date(r.day)),
-    r.firstIn?fmtTimeShort(new Date(r.firstIn.timestamp)):'',
-    r.lastOut?fmtTimeShort(new Date(r.lastOut.timestamp)):'En cours',
-    r.totalMs>0?Math.round(r.totalMs/60000):'',
-    r.zone?r.zone.name:'',
-    r.outOfZone?'Hors zone':'OK'
+function exporterCSV() {
+  if (!donneesRapport.length) return;
+  const entetes = ['Ouvrier','Métier','Date','Entrée','Sortie','Durée (min)','Zone','Statut'];
+  const lignes = donneesRapport.map(r=>[
+    r.ouvrier.nom, r.ouvrier.metier,
+    formaterDateCourte(new Date(r.jour)),
+    r.premiereEntree?formaterHeureCourte(new Date(r.premiereEntree.horodatage)):'',
+    r.derniereSortie?formaterHeureCourte(new Date(r.derniereSortie.horodatage)):'En cours',
+    r.tempsTotal>0?Math.round(r.tempsTotal/60000):'',
+    r.zone?r.zone.nom:'',
+    r.horsZone?'Hors zone':'OK'
   ]);
-  const csv = [headers,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csv = [entetes,...lignes].map(l=>l.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const bom = '﻿';
   const blob = new Blob([bom+csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href=url; a.download=`pointages_${$('report-from').value}_${$('report-to').value}.csv`;
+  a.href=url; a.download=`pointages_${$('rapport-du').value}_${$('rapport-au').value}.csv`;
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
-  showToast('Export CSV téléchargé', 'success');
+  afficherNotification('Export CSV téléchargé', 'succes');
 }
 
 /* ═══════════════════════════════════════════════════════════
-   INIT
+   INITIALISATION
 ═══════════════════════════════════════════════════════════ */
-Store.load();
-if (!Store.data.workers.length) Store.seed();
+Stockage.charger();
+if (!Stockage.donnees.ouvriers.length) Stockage.initialiser();
 
-const session = loadSession();
+const session = chargerSession();
 if (session) {
-  currentUser = session;
-  if (currentUser.role==='manager') showManagerView();
-  else showWorkerView();
+  utilisateurActuel = session;
+  if (utilisateurActuel.role==='gestionnaire') afficherVueGestionnaire();
+  else afficherVueOuvrier();
 } else {
-  showView('login');
+  afficherVue('connexion');
 }
 
-// Redraw radar on theme change
+// Redessiner le radar au changement de thème
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', ()=>{
-  if (currentUser?.role==='worker' && GPS.position) {
-    const result = GPS.getClosestZone(GPS.position.lat, GPS.position.lng);
-    if (result) drawRadar(GPS.position, result); else drawRadarNoGPS();
+  if (utilisateurActuel?.role==='ouvrier' && GPS.position) {
+    const resultat = GPS.zoneLaPlusProche(GPS.position.lat, GPS.position.lng);
+    if (resultat) dessinerRadar(GPS.position, resultat); else dessinerRadarSansGPS();
   }
 });
