@@ -195,6 +195,7 @@
   <div class="contenu">
     <div class="onglets">
       <button class="bouton-onglet actif" onclick="changerOnglet('vue-ensemble', this)">📋 Vue d'ensemble</button>
+      <button class="bouton-onglet" onclick="changerOnglet('ouvriers', this)">👥 Ouvriers</button>
       <button class="bouton-onglet" onclick="changerOnglet('zones', this)">📍 Zones</button>
       <button class="bouton-onglet" onclick="changerOnglet('rapports', this)">📊 Rapports</button>
     </div>
@@ -232,6 +233,34 @@
         <button class="bouton bouton-fantome bouton-petit" onclick="actualiserGestionnaire()">↻ Actualiser</button>
       </div>
       <div class="grille-ouvriers" id="grille-ouvriers-gestionnaire"></div>
+    </div>
+
+    <!-- ONGLET : OUVRIERS -->
+    <div id="onglet-ouvriers" class="panneau-onglet">
+      <div class="disposition-zones">
+        <div>
+          <div class="entete-section" style="margin-bottom:14px;">
+            <div class="titre-section">Liste des ouvriers</div>
+          </div>
+          <div id="liste-ouvriers-gestion" class="liste-zones"></div>
+        </div>
+        <div>
+          <div class="carte carte-ajout-zone">
+            <div class="titre-ajout-zone">➕ Ajouter un ouvrier</div>
+            <div class="grille-formulaire">
+              <div class="champ">
+                <label class="libelle-champ">Nom complet</label>
+                <input type="text" id="nom-ouvrier" placeholder="ex: Julien Dumont">
+              </div>
+              <div class="champ">
+                <label class="libelle-champ">Métier</label>
+                <input type="text" id="metier-ouvrier" placeholder="ex: Maçon">
+              </div>
+              <button class="bouton bouton-primaire" onclick="ajouterOuvrier()" style="margin-top:4px;">Ajouter l'ouvrier</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ONGLET : ZONES -->

@@ -485,6 +485,7 @@ function dessinerRadarSansGPS() {
 function afficherVueGestionnaire() {
   afficherVue('gestionnaire');
   actualiserGestionnaire();
+  afficherOuvriersGestion();
   afficherZones();
   initialiserDatesRapport();
   remplirOuvriersRapport();
@@ -571,6 +572,51 @@ function calculerTempsTotal(pointages) {
   const dernier = pointages[pointages.length-1];
   if (dernier && dernier.type==='entree') total += Date.now() - new Date(dernier.horodatage);
   return total;
+}
+
+/* ─── GESTION DES OUVRIERS ─── */
+function afficherOuvriersGestion() {
+  const el = $('liste-ouvriers-gestion');
+  if (!Stockage.donnees.ouvriers.length) {
+    el.innerHTML = '<div class="etat-vide"><div class="icone-etat-vide">👷</div><div class="texte-etat-vide">Aucun ouvrier enregistré. Ajoutez le premier.</div></div>';
+    return;
+  }
+  el.innerHTML = Stockage.donnees.ouvriers.map(o => `<div class="carte carte-zone">
+      <div class="haut-carte-zone">
+        <div>
+          <div class="nom-zone">👷 ${o.nom}</div>
+          <div class="meta-zone">${o.metier}</div>
+        </div>
+        <button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);flex-shrink:0;" onclick="supprimerOuvrier('${o.id}')">Supprimer</button>
+      </div>
+    </div>`).join('');
+}
+
+function ajouterOuvrier() {
+  const nom = $('nom-ouvrier').value.trim();
+  const metier = $('metier-ouvrier').value.trim();
+  if (!nom || !metier) {
+    afficherNotification('Veuillez renseigner le nom et le métier', 'erreur');
+    return;
+  }
+  Stockage.donnees.ouvriers.push({ id: genererId(), nom, metier });
+  Stockage.enregistrer();
+  $('nom-ouvrier').value=''; $('metier-ouvrier').value='';
+  afficherOuvriersGestion();
+  remplirOuvriersRapport();
+  afficherNotification(`Ouvrier « ${nom} » ajouté`, 'succes');
+}
+
+function supprimerOuvrier(id) {
+  const o = Stockage.donnees.ouvriers.find(x=>x.id===id);
+  ouvrirDialogue('Supprimer l\'ouvrier', `Supprimer « ${o?.nom} » ? Son historique de pointages sera conservé.`, () => {
+    Stockage.donnees.ouvriers = Stockage.donnees.ouvriers.filter(x=>x.id!==id);
+    Stockage.enregistrer();
+    afficherOuvriersGestion();
+    remplirOuvriersRapport();
+    actualiserGestionnaire();
+    afficherNotification('Ouvrier supprimé', 'info');
+  });
 }
 
 /* ─── ZONES ─── */
