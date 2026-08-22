@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PointagePro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ─── TOAST ─── -->
+<div id="toast" class="toast">
+  <span id="toast-icon"></span>
+  <span id="toast-msg"></span>
+</div>
+
+<!-- ─── CONFIRM DIALOG ─── -->
+<div id="dialog" class="dialog-overlay">
+  <div class="dialog-box">
+    <div class="dialog-title" id="dialog-title"></div>
+    <div class="dialog-body" id="dialog-body"></div>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost btn-sm" onclick="closeDialog()">Annuler</button>
+      <button class="btn btn-danger btn-sm" id="dialog-confirm">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     LOGIN VIEW
+═══════════════════════════════════════════ -->
+<div id="view-login" class="view">
+  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;">
+    <div class="login-box">
+      <div class="login-logo">
+        <div class="login-logo-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+          </svg>
+        </div>
+        <div class="login-logo-name">Pointage<span>Pro</span></div>
+      </div>
+      <div class="login-card">
+        <div class="login-title">Connexion</div>
+        <div class="login-sub">Sélectionnez votre rôle pour continuer</div>
+        <div class="role-grid">
+          <div class="role-card" id="role-manager" onclick="selectRole('manager')">
+            <div class="role-card-icon" style="background:#EFF6FF;">📊</div>
+            <div class="role-card-label">Gestionnaire</div>
+            <div class="role-card-desc">Tableau de bord &amp; rapports</div>
+          </div>
+          <div class="role-card" id="role-worker" onclick="selectRole('worker')">
+            <div class="role-card-icon" style="background:#F0FDF4;">👷</div>
+            <div class="role-card-label">Ouvrier</div>
+            <div class="role-card-desc">Pointer entrée / sortie</div>
+          </div>
+        </div>
+        <div id="worker-select-section" class="worker-select-wrap" style="display:none;">
+          <label class="field-label">Sélectionnez votre nom</label>
+          <select id="worker-select" class="field-select">
+            <option value="">-- Choisir --</option>
+          </select>
+        </div>
+        <button class="login-btn" id="login-btn" onclick="doLogin()" disabled>Continuer →</button>
+      </div>
+      <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--txt-3);">
+        Données locales · GPS requis pour le pointage
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     WORKER VIEW
+═══════════════════════════════════════════ -->
+<div id="view-worker" class="view">
+  <header class="app-header">
+    <div class="app-header-logo">
+      <div class="app-header-logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/>
+        </svg>
+      </div>
+      PointagePro
+    </div>
+    <div class="header-spacer"></div>
+    <div class="header-user">
+      <div>
+        <div class="header-user-name" id="w-header-name"></div>
+        <div class="header-user-role">Ouvrier</div>
+      </div>
+      <div class="header-avatar" id="w-header-avatar"></div>
+      <button class="btn btn-ghost btn-sm" onclick="logout()">Déconnexion</button>
+    </div>
+  </header>
+
+  <div class="content">
+    <!-- Date/Time -->
+    <div class="worker-datetime">
+      <div class="worker-date" id="w-date"></div>
+      <div class="worker-time" id="w-time">--:--</div>
+    </div>
+
+    <!-- Status -->
+    <div class="card status-card">
+      <div class="status-card-row">
+        <div>
+          <div class="status-label">Statut actuel</div>
+          <div class="status-value" id="w-status-text">—</div>
+          <div class="status-since" id="w-status-since"></div>
+        </div>
+        <div id="w-status-badge"></div>
+      </div>
+    </div>
+
+    <!-- GPS -->
+    <div class="card gps-card">
+      <div class="gps-row">
+        <div class="gps-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/><path d="M19.778 4.222a10 10 0 0 1 0 15.556M4.222 4.222a10 10 0 0 0 0 15.556M15.536 8.464a5 5 0 0 1 0 7.072M8.464 8.464a5 5 0 0 0 0 7.072"/>
+          </svg>
+        </div>
+        <div class="gps-info">
+          <div class="gps-status" id="w-gps-status">Recherche de position…</div>
+          <div class="gps-coords" id="w-gps-coords">—</div>
+        </div>
+        <div id="w-gps-badge"></div>
+      </div>
+      <div class="gps-zone" id="w-zone-row" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-2);">
+        <span id="w-zone-dot" class="dot dot-grey"></span>
+        <span id="w-zone-text" style="color:var(--txt-2);">Aucune zone configurée</span>
+      </div>
+    </div>
+
+    <!-- Radar -->
+    <div class="card" style="padding:16px;" id="w-radar-card">
+      <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--txt-3);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+        <span>Zone la plus proche</span>
+        <span id="w-radar-dist" style="color:var(--txt-2);font-variant-numeric:tabular-nums;"></span>
+      </div>
+      <div class="radar-wrap">
+        <canvas id="w-radar" class="radar-canvas" width="200" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- Punch Button -->
+    <div class="punch-wrap">
+      <div class="punch-btn-outer">
+        <div class="punch-btn-ring" id="punch-ring"></div>
+        <button class="punch-btn" id="punch-btn" onclick="doPunch()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="punch-icon">
+            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+          </svg>
+          <span id="punch-label">Pointer</span>
+          <span class="punch-btn-label" id="punch-sub">Chargement…</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div id="w-history-section">
+      <div class="history-title">Pointages d'aujourd'hui</div>
+      <div id="w-history-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     MANAGER VIEW
+═══════════════════════════════════════════ -->
+<div id="view-manager" class="view">
+  <header class="app-header">
+    <div class="app-header-logo">
+      <div class="app-header-logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/>
+        </svg>
+      </div>
+      PointagePro
+    </div>
+    <div class="header-spacer"></div>
+    <div class="header-user">
+      <div>
+        <div class="header-user-name">Gestionnaire</div>
+        <div class="header-user-role">Accès complet</div>
+      </div>
+      <div class="header-avatar" style="background:var(--amber);">G</div>
+      <button class="btn btn-ghost btn-sm" onclick="logout()">Déconnexion</button>
+    </div>
+  </header>
+
+  <div class="content">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('overview', this)">📋 Vue d'ensemble</button>
+      <button class="tab-btn" onclick="switchTab('zones', this)">📍 Zones</button>
+      <button class="tab-btn" onclick="switchTab('reports', this)">📊 Rapports</button>
+    </div>
+
+    <!-- TAB: OVERVIEW -->
+    <div id="tab-overview" class="tab-panel active">
+      <div class="stats-row">
+        <div class="card stat-card">
+          <div class="stat-card-header">
+            <span class="badge badge-green"><span class="dot dot-green dot-pulse"></span>Présents</span>
+            <div class="stat-card-icon" style="background:var(--green-lt);">✅</div>
+          </div>
+          <div class="stat-val" id="stat-present" style="color:var(--green);">0</div>
+          <div class="stat-label">ouvriers sur chantier</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-card-header">
+            <span class="badge badge-red">Absents</span>
+            <div class="stat-card-icon" style="background:var(--red-lt);">🔴</div>
+          </div>
+          <div class="stat-val" id="stat-absent" style="color:var(--red);">0</div>
+          <div class="stat-label">non pointés</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-card-header">
+            <span class="badge badge-amber">Hors zone</span>
+            <div class="stat-card-icon" style="background:var(--amber-lt);">⚠️</div>
+          </div>
+          <div class="stat-val" id="stat-outside" style="color:var(--amber);">0</div>
+          <div class="stat-label">hors périmètre</div>
+        </div>
+      </div>
+      <div class="section-header">
+        <div class="section-title">Ouvriers</div>
+        <button class="btn btn-ghost btn-sm" onclick="refreshManager()">↻ Actualiser</button>
+      </div>
+      <div class="worker-grid" id="mgr-worker-grid"></div>
+    </div>
+
+    <!-- TAB: ZONES -->
+    <div id="tab-zones" class="tab-panel">
+      <div class="zones-layout">
+        <div>
+          <div class="section-header" style="margin-bottom:14px;">
+            <div class="section-title">Zones de pointage</div>
+          </div>
+          <div id="zones-list" class="zones-list"></div>
+        </div>
+        <div>
+          <div class="card add-zone-card">
+            <div class="add-zone-title">➕ Ajouter une zone</div>
+            <div class="form-grid">
+              <div class="field">
+                <label class="field-label">Nom du chantier</label>
+                <input type="text" id="zone-name" placeholder="ex: Chantier Bruxelles">
+              </div>
+              <div class="field">
+                <label class="field-label">Latitude</label>
+                <input type="number" id="zone-lat" placeholder="50.8503" step="0.0001">
+              </div>
+              <div class="field">
+                <label class="field-label">Longitude</label>
+                <input type="number" id="zone-lng" placeholder="4.3517" step="0.0001">
+              </div>
+              <div class="field">
+                <label class="field-label">Rayon (mètres)</label>
+                <input type="number" id="zone-radius" placeholder="100" min="10" max="5000">
+                <span class="form-hint">Zone dans laquelle le pointage est valide</span>
+              </div>
+              <button class="btn btn-primary" onclick="addZone()" style="margin-top:4px;">Ajouter la zone</button>
+              <button class="btn btn-ghost btn-sm" onclick="useCurrentLocation()" style="margin-top:-4px;">
+                📍 Utiliser ma position actuelle
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: REPORTS -->
+    <div id="tab-reports" class="tab-panel">
+      <div class="report-controls">
+        <div class="date-range-row">
+          <div class="field">
+            <label class="field-label">Du</label>
+            <input type="date" id="report-from">
+          </div>
+          <div class="field">
+            <label class="field-label">Au</label>
+            <input type="date" id="report-to">
+          </div>
+          <div class="field">
+            <label class="field-label">Ouvrier</label>
+            <select class="field-select" id="report-worker" style="width:180px;">
+              <option value="">Tous les ouvriers</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="generateReport()">Générer</button>
+        <button class="btn btn-ghost" onclick="exportCSV()" id="export-btn" style="display:none;">⬇ Exporter CSV</button>
+      </div>
+      <div class="report-table-wrap">
+        <table class="report-table" id="report-table">
+          <thead>
+            <tr>
+              <th>Ouvrier</th>
+              <th>Date</th>
+              <th>Entrée</th>
+              <th>Sortie</th>
+              <th>Durée</th>
+              <th>Zone</th>
+              <th>Statut</th>
+            </tr>
+          </thead>
+          <tbody id="report-body">
+            <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--txt-3);">Sélectionnez une période et cliquez sur Générer</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
