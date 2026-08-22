@@ -63,6 +63,13 @@
             <option value="">-- Choisir --</option>
           </select>
         </div>
+        <div id="section-mdp-gestionnaire" class="champ" style="display:none;margin-bottom:24px;">
+          <label class="libelle-champ" id="libelle-mdp-gestionnaire">Mot de passe</label>
+          <input type="password" id="mdp-gestionnaire" placeholder="••••••••" onkeydown="if(event.key==='Enter'){event.preventDefault();seConnecter();}" oninput="mettreAJourBoutonConnexion()">
+          <div id="lien-mdp-oublie" style="display:none;margin-top:4px;">
+            <button class="bouton bouton-fantome bouton-petit" onclick="reinitialiserMotDePasseGestionnaire()" type="button">Mot de passe oublié ?</button>
+          </div>
+        </div>
         <button class="bouton-connexion" id="bouton-connexion" onclick="seConnecter()" disabled>Continuer →</button>
       </div>
       <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--texte-3);">

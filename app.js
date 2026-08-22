@@ -162,10 +162,21 @@ $('dialogue').addEventListener('click', e => { if (e.target === $('dialogue')) f
    CONNEXION
 ═══════════════════════════════════════════════════════════ */
 let roleSelectionne = null;
+const CLE_MDP_GESTIONNAIRE = 'pointagepro_mdp_gestionnaire';
+
+async function hacherTexte(texte) {
+  const donnees = new TextEncoder().encode(texte);
+  const empreinte = await crypto.subtle.digest('SHA-256', donnees);
+  return Array.from(new Uint8Array(empreinte)).map(o => o.toString(16).padStart(2, '0')).join('');
+}
+
 function selectionnerRole(role) {
   roleSelectionne = role;
   $('role-gestionnaire').classList.toggle('selectionne', role==='gestionnaire');
   $('role-ouvrier').classList.toggle('selectionne', role==='ouvrier');
+  $('section-selection-ouvrier').style.display = 'none';
+  $('section-mdp-gestionnaire').style.display = 'none';
+  $('mdp-gestionnaire').value = '';
 
   if (role === 'ouvrier') {
     $('section-selection-ouvrier').style.display = 'block';
@@ -177,23 +188,37 @@ function selectionnerRole(role) {
       sel.appendChild(opt);
     });
     sel.onchange = () => mettreAJourBoutonConnexion();
-    mettreAJourBoutonConnexion();
-  } else {
-    $('section-selection-ouvrier').style.display = 'none';
-    mettreAJourBoutonConnexion();
+  } else if (role === 'gestionnaire') {
+    $('section-mdp-gestionnaire').style.display = 'block';
+    const mdpExiste = !!localStorage.getItem(CLE_MDP_GESTIONNAIRE);
+    $('libelle-mdp-gestionnaire').textContent = mdpExiste ? 'Mot de passe' : 'Créer un mot de passe gestionnaire';
+    $('lien-mdp-oublie').style.display = mdpExiste ? 'block' : 'none';
   }
+  mettreAJourBoutonConnexion();
 }
 
 function mettreAJourBoutonConnexion() {
   const btn = $('bouton-connexion');
   if (!roleSelectionne) { btn.disabled = true; return; }
   if (roleSelectionne === 'ouvrier' && !$('selection-ouvrier').value) { btn.disabled = true; return; }
+  if (roleSelectionne === 'gestionnaire' && !$('mdp-gestionnaire').value) { btn.disabled = true; return; }
   btn.disabled = false;
 }
 
-function seConnecter() {
+async function seConnecter() {
   if (!roleSelectionne) return;
   if (roleSelectionne === 'gestionnaire') {
+    const mdp = $('mdp-gestionnaire').value;
+    if (!mdp) return;
+    const empreinte = await hacherTexte(mdp);
+    const empreinteEnregistree = localStorage.getItem(CLE_MDP_GESTIONNAIRE);
+    if (!empreinteEnregistree) {
+      localStorage.setItem(CLE_MDP_GESTIONNAIRE, empreinte);
+      afficherNotification('Mot de passe gestionnaire défini', 'succes');
+    } else if (empreinte !== empreinteEnregistree) {
+      afficherNotification('Mot de passe incorrect', 'erreur');
+      return;
+    }
     utilisateurActuel = { role: 'gestionnaire', nom: 'Gestionnaire' };
     enregistrerSession(utilisateurActuel);
     afficherVueGestionnaire();
@@ -207,6 +232,16 @@ function seConnecter() {
   }
 }
 
+function reinitialiserMotDePasseGestionnaire() {
+  ouvrirDialogue('Réinitialiser le mot de passe', 'Le mot de passe gestionnaire actuel sera oublié et un nouveau pourra être défini à la prochaine connexion. Continuer ?', () => {
+    localStorage.removeItem(CLE_MDP_GESTIONNAIRE);
+    $('mdp-gestionnaire').value = '';
+    $('libelle-mdp-gestionnaire').textContent = 'Créer un mot de passe gestionnaire';
+    $('lien-mdp-oublie').style.display = 'none';
+    afficherNotification('Mot de passe réinitialisé', 'info');
+  });
+}
+
 function seDeconnecter() {
   GPS.arreter(); effacerSession(); utilisateurActuel = null;
   clearInterval(intervalleHorloge);
@@ -215,6 +250,8 @@ function seDeconnecter() {
   $('role-gestionnaire').classList.remove('selectionne');
   $('role-ouvrier').classList.remove('selectionne');
   $('section-selection-ouvrier').style.display = 'none';
+  $('section-mdp-gestionnaire').style.display = 'none';
+  $('mdp-gestionnaire').value = '';
   $('bouton-connexion').disabled = true;
 }
 
