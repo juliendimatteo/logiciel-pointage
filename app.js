@@ -527,6 +527,7 @@ function afficherVueGestionnaire() {
   afficherVue('gestionnaire');
   actualiserGestionnaire();
   afficherOuvriersGestion();
+  reinitialiserFormulaireZone();
   afficherZones();
   initialiserDatesRapport();
   remplirOuvriersRapport();
@@ -661,6 +662,8 @@ function supprimerOuvrier(id) {
 }
 
 /* ─── ZONES ─── */
+let zoneEnEdition = null;
+
 function afficherZones() {
   const el = $('liste-zones');
   if (!Stockage.donnees.zones.length) {
@@ -685,14 +688,47 @@ function afficherZones() {
           <div class="nom-zone">📍 ${z.nom}</div>
           <div class="meta-zone">Rayon ${z.rayon}m · ${z.lat.toFixed(4)}°N, ${z.lng.toFixed(4)}°E</div>
         </div>
-        <button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);flex-shrink:0;" onclick="supprimerZone('${z.id}')">Supprimer</button>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="bouton bouton-fantome bouton-petit" onclick="modifierZone('${z.id}')">Modifier</button>
+          <button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);" onclick="supprimerZone('${z.id}')">Supprimer</button>
+        </div>
       </div>
       <div class="ouvriers-zone">${puces}</div>
     </div>`;
   }).join('');
 }
 
-function ajouterZone() {
+function modifierZone(id) {
+  const z = Stockage.donnees.zones.find(x=>x.id===id);
+  if (!z) return;
+  zoneEnEdition = id;
+  $('nom-zone').value = z.nom;
+  $('adresse-zone').value = '';
+  $('adresse-zone-statut').textContent = 'Laissez vide pour garder les coordonnées actuelles, ou recherchez une nouvelle adresse';
+  $('lat-zone').value = z.lat;
+  $('lng-zone').value = z.lng;
+  $('rayon-zone').value = z.rayon;
+  $('titre-ajout-zone').textContent = '✏️ Modifier la zone';
+  $('bouton-enregistrer-zone').textContent = 'Enregistrer les modifications';
+  $('bouton-annuler-modif-zone').style.display = '';
+  $('nom-zone').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function annulerModifierZone() {
+  reinitialiserFormulaireZone();
+}
+
+function reinitialiserFormulaireZone() {
+  zoneEnEdition = null;
+  $('nom-zone').value=''; $('lat-zone').value=''; $('lng-zone').value=''; $('rayon-zone').value='';
+  $('adresse-zone').value = '';
+  $('adresse-zone-statut').textContent = 'Recherche via OpenStreetMap · remplit automatiquement lat/long ci-dessous';
+  $('titre-ajout-zone').textContent = '➕ Ajouter une zone';
+  $('bouton-enregistrer-zone').textContent = 'Ajouter la zone';
+  $('bouton-annuler-modif-zone').style.display = 'none';
+}
+
+function enregistrerZone() {
   const nom = $('nom-zone').value.trim();
   const lat = parseFloat($('lat-zone').value);
   const lng = parseFloat($('lng-zone').value);
@@ -705,11 +741,20 @@ function ajouterZone() {
     afficherNotification('Coordonnées GPS invalides', 'erreur');
     return;
   }
-  Stockage.donnees.zones.push({ id:genererId(), nom, lat, lng, rayon });
-  Stockage.enregistrer();
-  $('nom-zone').value=''; $('lat-zone').value=''; $('lng-zone').value=''; $('rayon-zone').value='';
-  afficherZones();
-  afficherNotification(`Zone « ${nom} » ajoutée`, 'succes');
+  if (zoneEnEdition) {
+    const z = Stockage.donnees.zones.find(x=>x.id===zoneEnEdition);
+    if (z) { z.nom = nom; z.lat = lat; z.lng = lng; z.rayon = rayon; }
+    Stockage.enregistrer();
+    reinitialiserFormulaireZone();
+    afficherZones();
+    afficherNotification(`Zone « ${nom} » modifiée`, 'succes');
+  } else {
+    Stockage.donnees.zones.push({ id:genererId(), nom, lat, lng, rayon });
+    Stockage.enregistrer();
+    reinitialiserFormulaireZone();
+    afficherZones();
+    afficherNotification(`Zone « ${nom} » ajoutée`, 'succes');
+  }
 }
 
 function supprimerZone(id) {
@@ -717,6 +762,7 @@ function supprimerZone(id) {
   ouvrirDialogue('Supprimer la zone', `Supprimer « ${z?.nom} » ? Les pointages existants ne seront pas affectés.`, () => {
     Stockage.donnees.zones = Stockage.donnees.zones.filter(x=>x.id!==id);
     Stockage.enregistrer();
+    if (zoneEnEdition === id) reinitialiserFormulaireZone();
     afficherZones();
     afficherNotification('Zone supprimée', 'info');
   });

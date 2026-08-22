@@ -281,7 +281,7 @@
         </div>
         <div>
           <div class="carte carte-ajout-zone">
-            <div class="titre-ajout-zone">➕ Ajouter une zone</div>
+            <div class="titre-ajout-zone" id="titre-ajout-zone">➕ Ajouter une zone</div>
             <div class="grille-formulaire">
               <div class="champ">
                 <label class="libelle-champ">Nom du chantier</label>
@@ -308,7 +308,10 @@
                 <input type="number" id="rayon-zone" placeholder="100" min="10" max="5000">
                 <span class="astuce-formulaire">Zone dans laquelle le pointage est valide</span>
               </div>
-              <button class="bouton bouton-primaire" onclick="ajouterZone()" style="margin-top:4px;">Ajouter la zone</button>
+              <button class="bouton bouton-primaire" onclick="enregistrerZone()" id="bouton-enregistrer-zone" style="margin-top:4px;">Ajouter la zone</button>
+              <button class="bouton bouton-fantome bouton-petit" onclick="annulerModifierZone()" id="bouton-annuler-modif-zone" style="display:none;">
+                Annuler la modification
+              </button>
               <button class="bouton bouton-fantome bouton-petit" onclick="utiliserPositionActuelle()" style="margin-top:-4px;">
                 📍 Utiliser ma position actuelle
               </button>
