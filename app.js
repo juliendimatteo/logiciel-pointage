@@ -336,10 +336,35 @@ function mettreAJourStatutOuvrier() {
   }
 }
 
+function dernierPointageDuJour(idOuvrier) {
+  const aujourdhui = dateAujourdhui();
+  const pointages = Stockage.donnees.pointages
+    .filter(p=>p.idOuvrier===idOuvrier && p.horodatage.startsWith(aujourdhui))
+    .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+  return pointages[pointages.length-1] || null;
+}
+
+function verifierCoherencePointage(dansZone) {
+  const el = $('alerte-pointage-manquant');
+  if (dansZone === null) { el.style.display = 'none'; return; }
+  const dernier = dernierPointageDuJour(utilisateurActuel.id);
+  const estPresent = !!dernier && dernier.type === 'entree';
+  if (dansZone && !estPresent) {
+    $('texte-alerte-pointage').textContent = "Vous êtes dans la zone du chantier mais vous n'avez pas pointé votre entrée.";
+    el.style.display = 'block';
+  } else if (!dansZone && estPresent) {
+    $('texte-alerte-pointage').textContent = 'Vous avez quitté la zone du chantier sans pointer votre sortie.';
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
 function mettreAJourAffichageGPS(pos) {
   if (!pos) {
     $('badge-gps-ouvrier').innerHTML = '<span class="badge badge-gris">Recherche…</span>';
     dessinerRadarSansGPS();
+    verifierCoherencePointage(null);
     return;
   }
   $('statut-gps-ouvrier').textContent = `Position obtenue (±${Math.round(pos.precision)}m)`;
@@ -356,11 +381,13 @@ function mettreAJourAffichageGPS(pos) {
     $('texte-zone-ouvrier').style.color = dansZone ? 'var(--vert)' : 'var(--ambre)';
     $('distance-radar-ouvrier').textContent = `${formaterDistance(distance)} du centre`;
     dessinerRadar(pos, resultat);
+    verifierCoherencePointage(dansZone);
   } else {
     $('point-zone-ouvrier').className = 'point point-gris';
     $('texte-zone-ouvrier').textContent = 'Aucune zone configurée';
     $('texte-zone-ouvrier').style.color = 'var(--texte-2)';
     dessinerRadarSansGPS();
+    verifierCoherencePointage(null);
   }
 }
 
@@ -396,6 +423,7 @@ function pointer() {
 
   mettreAJourStatutOuvrier();
   afficherHistoriqueOuvrier();
+  verifierCoherencePointage(resultat ? resultat.dansZone : null);
 }
 
 function afficherHistoriqueOuvrier() {
