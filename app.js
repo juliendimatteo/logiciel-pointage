@@ -109,15 +109,24 @@ async function verifierEtInitialiserDonnees() {
   await Stockage.initialiserFirestore();
 }
 
+let syncOuvriersPrete = false;
+let syncZonesPrete = false;
+
+function donneesEssentiellesChargees() {
+  return syncOuvriersPrete && syncZonesPrete;
+}
+
 function demarrerSynchronisation() {
   db.collection('ouvriers').onSnapshot(snap => {
     Stockage.donnees.ouvriers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    syncOuvriersPrete = true;
     if (!verificationInitialisationFaite) { verificationInitialisationFaite = true; verifierEtInitialiserDonnees(); }
     rafraichirSelonContexte();
   }, err => { console.error('Erreur de synchronisation (ouvriers) :', err); afficherNotification('Synchronisation impossible (ouvriers)', 'erreur'); });
 
   db.collection('zones').onSnapshot(snap => {
     Stockage.donnees.zones = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    syncZonesPrete = true;
     rafraichirSelonContexte();
   }, err => { console.error('Erreur de synchronisation (zones) :', err); afficherNotification('Synchronisation impossible (zones)', 'erreur'); });
 
@@ -376,6 +385,12 @@ function afficherVueOuvrier() {
 }
 
 function mettreAJourStatutOuvrier() {
+  if (!donneesEssentiellesChargees()) {
+    $('bouton-pointage').disabled = true;
+    $('sous-libelle-pointage').textContent = 'Chargement…';
+    return;
+  }
+  $('bouton-pointage').disabled = false;
   const aujourdhui = dateAujourdhui();
   const pointages = Stockage.donnees.pointages.filter(p=>p.idOuvrier===utilisateurActuel.id && p.horodatage.startsWith(aujourdhui));
   pointages.sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
@@ -478,7 +493,7 @@ function mettreAJourAffichageGPS(pos) {
     verifierCoherencePointage(dansZone);
   } else {
     $('point-zone-ouvrier').className = 'point point-gris';
-    $('texte-zone-ouvrier').textContent = 'Aucune zone configurée';
+    $('texte-zone-ouvrier').textContent = syncZonesPrete ? 'Aucune zone configurée' : 'Chargement des zones…';
     $('texte-zone-ouvrier').style.color = 'var(--texte-2)';
     dessinerRadarSansGPS();
     verifierCoherencePointage(null);
@@ -486,6 +501,10 @@ function mettreAJourAffichageGPS(pos) {
 }
 
 async function pointer() {
+  if (!donneesEssentiellesChargees()) {
+    afficherNotification('Chargement en cours, réessayez dans un instant…', 'alerte');
+    return;
+  }
   if (!GPS.position) {
     // Mode démo : permet de pointer sans GPS
     const pos = { lat: 50.8503 + (Math.random()-.5)*0.002, lng: 4.3517 + (Math.random()-.5)*0.002, precision: 15 };

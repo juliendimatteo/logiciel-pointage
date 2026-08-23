@@ -390,6 +390,7 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
 }
 .bouton-pointage:hover { transform: scale(1.04); }
 .bouton-pointage:active { transform: scale(.97); }
+.bouton-pointage:disabled { opacity: .55; cursor: not-allowed; transform: none; }
 .bouton-pointage svg { width: 28px; height: 28px; }
 .libelle-bouton-pointage { font-size: 12px; font-weight: 500; opacity: .85; font-family: var(--police-texte); }
 
