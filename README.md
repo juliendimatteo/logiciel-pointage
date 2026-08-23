@@ -16,6 +16,8 @@ les appareils via Firebase Firestore.
 **Gestionnaire** (accès protégé par mot de passe)
 - Vue d'ensemble en temps réel : ouvriers présents / absents / hors zone,
   mis à jour instantanément dès qu'un ouvrier pointe depuis son appareil
+- Carte en direct (Leaflet / OpenStreetMap) : position des ouvriers
+  actuellement présents, mise à jour automatiquement
 - Gestion des ouvriers (ajout, suppression)
 - Gestion des zones de chantier (nom, adresse ou coordonnées GPS, rayon)
 - Rapports par période et par ouvrier, avec export CSV
@@ -79,3 +81,7 @@ nécessaire (accès à Firestore).
   l'application reste utilisable en mode démo (position simulée).
 - Au tout premier lancement (base Firestore vide), un jeu de données
   d'exemple (ouvriers, zones, pointages) est créé automatiquement.
+- Tant qu'un ouvrier est connecté avec son statut « Présent », son
+  application envoie sa position toutes les ~20 secondes (collection
+  Firestore `positions`) pour alimenter la carte en direct du gestionnaire ;
+  cette position est supprimée dès qu'il se déconnecte.

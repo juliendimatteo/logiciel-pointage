@@ -61,7 +61,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 const Stockage = {
-  donnees: { ouvriers: [], zones: [], pointages: [] },
+  donnees: { ouvriers: [], zones: [], pointages: [], positions: [] },
 
   async initialiserFirestore() {
     const maintenant = new Date();
@@ -125,6 +125,11 @@ function demarrerSynchronisation() {
     Stockage.donnees.pointages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     rafraichirSelonContexte();
   }, err => { console.error('Erreur de synchronisation (pointages) :', err); afficherNotification('Synchronisation impossible (pointages)', 'erreur'); });
+
+  db.collection('positions').onSnapshot(snap => {
+    Stockage.donnees.positions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (carteLeaflet) mettreAJourCarte();
+  }, err => { console.error('Erreur de synchronisation (positions) :', err); });
 }
 
 function rafraichirSelonContexte() {
@@ -137,6 +142,7 @@ function rafraichirSelonContexte() {
     afficherOuvriersGestion();
     afficherZones();
     remplirOuvriersRapport();
+    if (carteLeaflet) mettreAJourCarte();
   } else if (utilisateurActuel.role === 'ouvrier') {
     mettreAJourStatutOuvrier();
     afficherHistoriqueOuvrier();
@@ -307,6 +313,9 @@ function reinitialiserMotDePasseGestionnaire() {
 }
 
 function seDeconnecter() {
+  if (utilisateurActuel?.role === 'ouvrier') {
+    db.collection('positions').doc(utilisateurActuel.id).delete().catch(()=>{});
+  }
   GPS.arreter(); effacerSession(); utilisateurActuel = null;
   clearInterval(intervalleHorloge);
   afficherVue('connexion');
@@ -408,6 +417,19 @@ function dernierPointageDuJour(idOuvrier) {
   return pointages[pointages.length-1] || null;
 }
 
+let dernierEnvoiPosition = 0;
+const INTERVALLE_ENVOI_POSITION_MS = 20000;
+
+function envoyerPositionSiNecessaire(pos) {
+  if (!utilisateurActuel || utilisateurActuel.role !== 'ouvrier') return;
+  const maintenant = Date.now();
+  if (maintenant - dernierEnvoiPosition < INTERVALLE_ENVOI_POSITION_MS) return;
+  dernierEnvoiPosition = maintenant;
+  db.collection('positions').doc(utilisateurActuel.id).set({
+    lat: pos.lat, lng: pos.lng, horodatage: new Date().toISOString()
+  }).catch(e => console.error('Erreur envoi position :', e));
+}
+
 function verifierCoherencePointage(dansZone) {
   const el = $('alerte-pointage-manquant');
   if (dansZone === null) { el.style.display = 'none'; return; }
@@ -434,6 +456,7 @@ function mettreAJourAffichageGPS(pos) {
   $('statut-gps-ouvrier').textContent = `Position obtenue (±${Math.round(pos.precision)}m)`;
   $('coordonnees-gps-ouvrier').textContent = `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
   $('badge-gps-ouvrier').innerHTML = '<span class="badge badge-vert">✓ GPS</span>';
+  envoyerPositionSiNecessaire(pos);
 
   const resultat = GPS.zoneLaPlusProche(pos.lat, pos.lng);
   if (resultat) {
@@ -625,6 +648,73 @@ function changerOnglet(nom, btn) {
   document.querySelectorAll('.panneau-onglet').forEach(p=>p.classList.remove('actif'));
   btn.classList.add('actif');
   $(`onglet-${nom}`).classList.add('actif');
+  if (nom === 'carte') initialiserCarte();
+}
+
+/* ─── CARTE EN DIRECT ─── */
+let carteLeaflet = null;
+let cerclesZonesCarte = {};
+let marqueursOuvriersCarte = {};
+
+function initialiserCarte() {
+  if (carteLeaflet) {
+    setTimeout(() => carteLeaflet.invalidateSize(), 50);
+    mettreAJourCarte();
+    return;
+  }
+  carteLeaflet = L.map('carte-live').setView([50.8503, 4.3517], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(carteLeaflet);
+  setTimeout(() => carteLeaflet.invalidateSize(), 50);
+  mettreAJourCarte();
+}
+
+function mettreAJourCarte() {
+  if (!carteLeaflet) return;
+
+  Object.values(cerclesZonesCarte).forEach(c => carteLeaflet.removeLayer(c));
+  cerclesZonesCarte = {};
+  Stockage.donnees.zones.forEach(z => {
+    const cercle = L.circle([z.lat, z.lng], {
+      radius: z.rayon, color: '#1D4ED8', weight: 2, fillColor: '#1D4ED8', fillOpacity: 0.08
+    }).addTo(carteLeaflet).bindTooltip(z.nom, { permanent: true, direction: 'top', className: 'etiquette-zone-carte' });
+    cerclesZonesCarte[z.id] = cercle;
+  });
+
+  const idsPresents = new Set(
+    Stockage.donnees.ouvriers
+      .filter(o => { const d = dernierPointageDuJour(o.id); return d && d.type === 'entree'; })
+      .map(o => o.id)
+  );
+
+  Object.keys(marqueursOuvriersCarte).forEach(id => {
+    const positionConnue = Stockage.donnees.positions.find(p => p.id === id);
+    if (!idsPresents.has(id) || !positionConnue) {
+      carteLeaflet.removeLayer(marqueursOuvriersCarte[id]);
+      delete marqueursOuvriersCarte[id];
+    }
+  });
+
+  Stockage.donnees.positions.forEach(p => {
+    if (!idsPresents.has(p.id)) return;
+    const o = Stockage.donnees.ouvriers.find(x => x.id === p.id);
+    if (!o) return;
+    const couleur = couleurAvatar(o.nom);
+    if (marqueursOuvriersCarte[p.id]) {
+      marqueursOuvriersCarte[p.id].setLatLng([p.lat, p.lng]);
+    } else {
+      const icone = L.divIcon({
+        className: '',
+        html: `<div style="background:${couleur};width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;font-family:var(--police-titre);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);">${initiales(o.nom)}</div>`,
+        iconSize: [30, 30], iconAnchor: [15, 15]
+      });
+      marqueursOuvriersCarte[p.id] = L.marker([p.lat, p.lng], { icon: icone })
+        .addTo(carteLeaflet)
+        .bindPopup(`<b>${o.nom}</b><br>${o.metier}`);
+    }
+  });
 }
 
 function actualiserGestionnaire() {

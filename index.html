@@ -6,6 +6,7 @@
 <title>PointagePro</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -212,6 +213,7 @@
       <button class="bouton-onglet actif" onclick="changerOnglet('vue-ensemble', this)">📋 Vue d'ensemble</button>
       <button class="bouton-onglet" onclick="changerOnglet('ouvriers', this)">👥 Ouvriers</button>
       <button class="bouton-onglet" onclick="changerOnglet('zones', this)">📍 Zones</button>
+      <button class="bouton-onglet" onclick="changerOnglet('carte', this)">🗺️ Carte</button>
       <button class="bouton-onglet" onclick="changerOnglet('rapports', this)">📊 Rapports</button>
     </div>
 
@@ -329,6 +331,21 @@
       </div>
     </div>
 
+    <!-- ONGLET : CARTE -->
+    <div id="onglet-carte" class="panneau-onglet">
+      <div class="entete-section" style="margin-bottom:14px;">
+        <div class="titre-section">Position des ouvriers en direct</div>
+        <button class="bouton bouton-fantome bouton-petit" onclick="mettreAJourCarte()">↻ Actualiser</button>
+      </div>
+      <div class="carte" style="padding:0;overflow:hidden;">
+        <div id="carte-live" style="height:520px;width:100%;"></div>
+      </div>
+      <div class="astuce-formulaire" style="margin-top:10px;">
+        Seuls les ouvriers actuellement <strong>présents</strong> (ayant pointé leur entrée) et ayant leur
+        application ouverte apparaissent sur la carte. Position mise à jour toutes les ~20 secondes.
+      </div>
+    </div>
+
     <!-- ONGLET : RAPPORTS -->
     <div id="onglet-rapports" class="panneau-onglet">
       <div class="controles-rapport">
@@ -373,6 +390,7 @@
   </div>
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>

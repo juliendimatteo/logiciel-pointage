@@ -571,6 +571,16 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
 .corps-dialogue { font-size: 14px; color: var(--texte-2); margin-bottom: 20px; }
 .actions-dialogue { display: flex; gap: 8px; justify-content: flex-end; }
 
+/* Carte en direct */
+#carte-live { background: var(--carte-2); z-index: 0; }
+.etiquette-zone-carte {
+  background: var(--carte) !important; color: var(--texte) !important;
+  border: 1px solid var(--bordure) !important; border-radius: var(--rayon-sm) !important;
+  font-family: var(--police-texte) !important; font-size: 11px !important; font-weight: 600 !important;
+  padding: 2px 8px !important; box-shadow: var(--ombre-sm) !important;
+}
+.etiquette-zone-carte::before { display: none !important; }
+
 /* Adaptatif */
 @media (max-width: 600px) {
   .ligne-stats { grid-template-columns: 1fr 1fr; }
