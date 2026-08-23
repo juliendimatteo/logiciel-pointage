@@ -1294,28 +1294,23 @@ function genererRapport() {
 
   if (!du||!au||du>au) { afficherNotification('Sélectionnez une période valide', 'erreur'); return; }
 
-  // Construire le résumé par ouvrier et par jour (calendrier local, pas UTC)
-  const jours = [];
-  const [anneeDu, moisDu, jourDu] = du.split('-').map(Number);
-  const d = new Date(anneeDu, moisDu - 1, jourDu);
-  while (dateLocale(d) <= au) { jours.push(dateLocale(d)); d.setDate(d.getDate()+1); }
-
   const ouvriers = idOuvrier ? Stockage.donnees.ouvriers.filter(o=>o.id===idOuvrier) : Stockage.donnees.ouvriers;
   donneesRapport = [];
 
+  // Un pointage = une ligne (pas un résumé par jour), pour ne pas masquer les allers-retours réels
   for (const o of ouvriers) {
-    for (const jour of jours) {
-      const pointages = Stockage.donnees.pointages
-        .filter(p=>p.idOuvrier===o.id && jourLocalDe(p.horodatage) === jour)
-        .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
-      if (!pointages.length) continue;
-      const premiereEntree = pointages.find(p=>p.type==='entree');
-      const derniereSortie = [...pointages].reverse().find(p=>p.type==='sortie');
-      const tempsTotal = calculerTempsTotal(pointages);
-      const zone = premiereEntree?.idZone ? Stockage.donnees.zones.find(z=>z.id===premiereEntree.idZone) : null;
-      const horsZone = pointages.some(p=>!p.dansZone && Stockage.donnees.zones.length>0);
-      donneesRapport.push({ ouvrier: o, jour, premiereEntree, derniereSortie, tempsTotal, zone, horsZone });
-    }
+    const pointages = Stockage.donnees.pointages
+      .filter(p => p.idOuvrier===o.id && jourLocalDe(p.horodatage) >= du && jourLocalDe(p.horodatage) <= au)
+      .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+
+    pointages.forEach((p, i) => {
+      const zone = p.idZone ? Stockage.donnees.zones.find(z=>z.id===p.idZone) : null;
+      const precedent = pointages[i-1];
+      const duree = (p.type==='sortie' && precedent && precedent.type==='entree')
+        ? new Date(p.horodatage) - new Date(precedent.horodatage)
+        : null;
+      donneesRapport.push({ ouvrier: o, pointage: p, zone, duree });
+    });
   }
 
   const corps = $('corps-rapport');
@@ -1325,24 +1320,30 @@ function genererRapport() {
     return;
   }
 
-  corps.innerHTML = donneesRapport.map(r => `
+  corps.innerHTML = donneesRapport.map(r => {
+    const p = r.pointage;
+    const estEntree = p.type === 'entree';
+    const horsZone = !p.forcee && !p.dansZone && Stockage.donnees.zones.length > 0;
+    return `
     <tr>
       <td><div style="display:flex;align-items:center;gap:8px;">
         <div style="width:24px;height:24px;border-radius:50%;background:${couleurAvatar(r.ouvrier.nom)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;font-family:var(--police-titre);flex-shrink:0;">${initiales(r.ouvrier.nom)}</div>
         <span style="font-weight:500;">${r.ouvrier.nom}</span>
       </div></td>
-      <td>${formaterDateCourte(new Date(r.jour))}</td>
-      <td>${r.premiereEntree?formaterHeureCourte(new Date(r.premiereEntree.horodatage)):'—'}</td>
-      <td>${r.derniereSortie?formaterHeureCourte(new Date(r.derniereSortie.horodatage)):'<span style="color:var(--vert);font-size:11px;">En cours</span>'}</td>
-      <td><span style="font-weight:600;">${r.tempsTotal>0?formaterDuree(r.tempsTotal):'—'}</span></td>
+      <td>${formaterDateCourte(new Date(p.horodatage))}</td>
+      <td>${formaterHeureCourte(new Date(p.horodatage))}</td>
+      <td><span style="font-weight:600;color:${estEntree?'var(--vert)':'var(--rouge)'};">${estEntree?'⬆️ Entrée':'⬇️ Sortie'}</span></td>
       <td>${r.zone?r.zone.nom:'<span style="color:var(--texte-3);">—</span>'}</td>
-      <td>${r.horsZone
-        ? '<span class="badge badge-ambre">⚠️ Hors zone</span>'
-        : '<span class="badge badge-vert">✓ OK</span>'}</td>
-    </tr>
-  `).join('');
+      <td>${r.duree!=null?`<span style="font-weight:600;">${formaterDuree(r.duree)}</span>`:'<span style="color:var(--texte-3);">—</span>'}</td>
+      <td>${p.forcee
+        ? '<span class="badge badge-bleu">Sortie forcée</span>'
+        : horsZone
+          ? '<span class="badge badge-ambre">⚠️ Hors zone</span>'
+          : '<span class="badge badge-vert">✓ OK</span>'}</td>
+    </tr>`;
+  }).join('');
   $('bouton-export').style.display='';
-  afficherNotification(`${donneesRapport.length} ligne(s) générée(s)`, 'succes');
+  afficherNotification(`${donneesRapport.length} pointage(s) trouvé(s)`, 'succes');
 }
 
 async function exporterExcel() {
@@ -1364,14 +1365,14 @@ async function exporterExcel() {
   feuille.getRow(2).height = 6;
 
   feuille.columns = [
-    { header: 'Ouvrier',   key: 'ouvrier',  width: 24 },
-    { header: 'Métier',    key: 'metier',   width: 18 },
-    { header: 'Date',      key: 'date',     width: 13 },
-    { header: 'Entrée',    key: 'entree',   width: 11 },
-    { header: 'Sortie',    key: 'sortie',   width: 11 },
-    { header: 'Durée',     key: 'duree',    width: 10 },
-    { header: 'Zone',      key: 'zone',     width: 20 },
-    { header: 'Statut',    key: 'statut',   width: 14 },
+    { header: 'Ouvrier',        key: 'ouvrier',  width: 24 },
+    { header: 'Métier',         key: 'metier',   width: 18 },
+    { header: 'Date',           key: 'date',     width: 13 },
+    { header: 'Heure',          key: 'heure',    width: 10 },
+    { header: 'Type',           key: 'type',     width: 11 },
+    { header: 'Zone',           key: 'zone',     width: 20 },
+    { header: 'Durée session',  key: 'duree',    width: 14 },
+    { header: 'Statut',         key: 'statut',   width: 14 },
   ];
 
   const ligneEntetes = feuille.getRow(3);
@@ -1385,23 +1386,32 @@ async function exporterExcel() {
   ligneEntetes.height = 20;
 
   donneesRapport.forEach(r => {
+    const p = r.pointage;
+    const estEntree = p.type === 'entree';
+    const horsZone = !p.forcee && !p.dansZone && Stockage.donnees.zones.length > 0;
+    const statut = p.forcee ? 'Sortie forcée' : (horsZone ? 'Hors zone' : 'OK');
     const ligne = feuille.addRow({
       ouvrier: r.ouvrier.nom,
       metier: r.ouvrier.metier || '',
-      date: formaterDateCourte(new Date(r.jour)),
-      entree: r.premiereEntree ? formaterHeureCourte(new Date(r.premiereEntree.horodatage)) : '',
-      sortie: r.derniereSortie ? formaterHeureCourte(new Date(r.derniereSortie.horodatage)) : 'En cours',
-      duree: r.tempsTotal > 0 ? formaterDuree(r.tempsTotal) : '',
+      date: formaterDateCourte(new Date(p.horodatage)),
+      heure: formaterHeureCourte(new Date(p.horodatage)),
+      type: estEntree ? 'Entrée' : 'Sortie',
       zone: r.zone ? r.zone.nom : '',
-      statut: r.horsZone ? 'Hors zone' : 'OK',
+      duree: r.duree != null ? formaterDuree(r.duree) : '',
+      statut,
     });
+    const celluleType = ligne.getCell('type');
+    celluleType.font = { color: { argb: estEntree ? 'FF15803D' : 'FFB91C1C' }, bold: true };
     const celluleStatut = ligne.getCell('statut');
-    if (r.horsZone) {
+    if (statut === 'OK') {
+      celluleStatut.font = { color: { argb: 'FF15803D' }, bold: true };
+      celluleStatut.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+    } else if (statut === 'Hors zone') {
       celluleStatut.font = { color: { argb: 'FFD97706' }, bold: true };
       celluleStatut.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } };
     } else {
-      celluleStatut.font = { color: { argb: 'FF15803D' }, bold: true };
-      celluleStatut.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+      celluleStatut.font = { color: { argb: 'FF1D4ED8' }, bold: true };
+      celluleStatut.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
     }
   });
 
