@@ -662,6 +662,7 @@ function changerOnglet(nom, btn) {
 let carteLeaflet = null;
 let cerclesZonesCarte = {};
 let marqueursOuvriersCarte = {};
+let derniereCleCadrageCarte = null;
 
 function initialiserCarte() {
   if (carteLeaflet) {
@@ -669,12 +670,41 @@ function initialiserCarte() {
     mettreAJourCarte();
     return;
   }
-  carteLeaflet = L.map('carte-live').setView([50.8503, 4.3517], 13);
+  carteLeaflet = L.map('carte-live').setView([50, 10], 4);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
     maxZoom: 19
   }).addTo(carteLeaflet);
   setTimeout(() => carteLeaflet.invalidateSize(), 50);
+  derniereCleCadrageCarte = null;
+  mettreAJourCarte();
+}
+
+function idsOuvriersPresents() {
+  return new Set(
+    Stockage.donnees.ouvriers
+      .filter(o => { const d = dernierPointageDuJour(o.id); return d && d.type === 'entree'; })
+      .map(o => o.id)
+  );
+}
+
+function cadrerCarteSiNecessaire(idsPresents) {
+  const cle = Stockage.donnees.zones.map(z => `z:${z.id}:${z.lat}:${z.lng}:${z.rayon}`).sort().join('|')
+    + '||' + [...idsPresents].sort().join(',');
+  if (cle === derniereCleCadrageCarte) return;
+  derniereCleCadrageCarte = cle;
+
+  const points = [];
+  Stockage.donnees.zones.forEach(z => points.push(L.latLng(z.lat, z.lng)));
+  Stockage.donnees.positions.forEach(p => { if (idsPresents.has(p.id)) points.push(L.latLng(p.lat, p.lng)); });
+
+  if (!points.length) { carteLeaflet.setView([50, 10], 4); return; }
+  if (points.length === 1) { carteLeaflet.setView(points[0], 15); return; }
+  carteLeaflet.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 16 });
+}
+
+function recadrerCarteManuel() {
+  derniereCleCadrageCarte = null;
   mettreAJourCarte();
 }
 
@@ -690,11 +720,7 @@ function mettreAJourCarte() {
     cerclesZonesCarte[z.id] = cercle;
   });
 
-  const idsPresents = new Set(
-    Stockage.donnees.ouvriers
-      .filter(o => { const d = dernierPointageDuJour(o.id); return d && d.type === 'entree'; })
-      .map(o => o.id)
-  );
+  const idsPresents = idsOuvriersPresents();
 
   Object.keys(marqueursOuvriersCarte).forEach(id => {
     const positionConnue = Stockage.donnees.positions.find(p => p.id === id);
@@ -722,6 +748,8 @@ function mettreAJourCarte() {
         .bindPopup(`<b>${o.nom}</b><br>${o.metier}`);
     }
   });
+
+  cadrerCarteSiNecessaire(idsPresents);
 }
 
 function actualiserGestionnaire() {
