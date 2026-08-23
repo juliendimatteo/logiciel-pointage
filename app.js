@@ -404,8 +404,11 @@ function gererErreurGPS(err) {
   if (err.code !== 3) {
     dessinerRadarSansGPS();
     verifierCoherencePointage(null);
+    definirDansZoneConnu(null);
   }
 }
+
+let dernierDansZoneConnu = null;
 
 function mettreAJourStatutOuvrier() {
   if (!donneesEssentiellesChargees()) {
@@ -451,6 +454,14 @@ function mettreAJourStatutOuvrier() {
     $('icone-pointage').innerHTML = '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>';
     $('anneau-pointage').style.borderColor = '#86EFAC';
     $('anneau-pointage').classList.add('actif');
+
+    // L'entrée ne peut être pointée que depuis l'intérieur d'une zone de chantier ;
+    // la sortie (ci-dessus) reste toujours possible pour ne pas bloquer un ouvrier
+    // dont le GPS dérive légèrement au moment de quitter le chantier.
+    if (Stockage.donnees.zones.length > 0 && dernierDansZoneConnu !== true) {
+      btn.disabled = true;
+      $('sous-libelle-pointage').textContent = 'Approchez-vous d\'une zone de chantier';
+    }
   }
 }
 
@@ -496,6 +507,7 @@ function mettreAJourAffichageGPS(pos) {
     $('badge-gps-ouvrier').innerHTML = '<span class="badge badge-gris">Recherche…</span>';
     dessinerRadarSansGPS();
     verifierCoherencePointage(null);
+    definirDansZoneConnu(null);
     return;
   }
   $('statut-gps-ouvrier').textContent = `Position obtenue (±${Math.round(pos.precision)}m)`;
@@ -514,13 +526,21 @@ function mettreAJourAffichageGPS(pos) {
     $('distance-radar-ouvrier').textContent = `${formaterDistance(distance)} du centre`;
     dessinerRadar(pos, resultat);
     verifierCoherencePointage(dansZone);
+    definirDansZoneConnu(dansZone);
   } else {
     $('point-zone-ouvrier').className = 'point point-gris';
     $('texte-zone-ouvrier').textContent = syncZonesPrete ? 'Aucune zone configurée' : 'Chargement des zones…';
     $('texte-zone-ouvrier').style.color = 'var(--texte-2)';
     dessinerRadarSansGPS();
     verifierCoherencePointage(null);
+    definirDansZoneConnu(null);
   }
+}
+
+function definirDansZoneConnu(valeur) {
+  if (dernierDansZoneConnu === valeur) return;
+  dernierDansZoneConnu = valeur;
+  if (utilisateurActuel && utilisateurActuel.role === 'ouvrier') mettreAJourStatutOuvrier();
 }
 
 async function pointer() {
@@ -537,12 +557,20 @@ async function pointer() {
   const type = (!dernier || dernier.type==='sortie') ? 'entree' : 'sortie';
 
   const resultat = GPS.zoneLaPlusProche(pos.lat, pos.lng);
+  const dansZone = resultat?.dansZone || false;
+
+  if (type === 'entree' && Stockage.donnees.zones.length > 0 && !dansZone) {
+    const zoneProche = resultat?.zone ? ` La zone la plus proche (${resultat.zone.nom}) est à ${formaterDistance(resultat.distance)}.` : '';
+    afficherNotification(`Vous devez être dans une zone de chantier pour pointer votre entrée.${zoneProche}`, 'erreur');
+    return;
+  }
+
   const pointage = {
     idOuvrier: utilisateurActuel.id,
     type, lat: pos.lat, lng: pos.lng,
     horodatage: new Date().toISOString(),
     idZone: resultat?.zone?.id || null,
-    dansZone: resultat?.dansZone || false
+    dansZone
   };
 
   try {
