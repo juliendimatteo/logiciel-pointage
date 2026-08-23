@@ -166,14 +166,21 @@ const GPS = {
   position: null,
   idSuivi: null,
   surMiseAJour: null,
+  surErreur: null,
   demarrer() {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      if (this.surErreur) this.surErreur({ code: 0 });
+      return;
+    }
     this.idSuivi = navigator.geolocation.watchPosition(
       pos => {
         this.position = { lat: pos.coords.latitude, lng: pos.coords.longitude, precision: pos.coords.accuracy };
         if (this.surMiseAJour) this.surMiseAJour(this.position);
       },
-      err => { console.warn('Erreur GPS :', err.message); },
+      err => {
+        console.warn('Erreur GPS :', err.message);
+        if (this.surErreur) this.surErreur(err);
+      },
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
     );
   },
@@ -379,9 +386,25 @@ function afficherVueOuvrier() {
 
   // GPS
   GPS.surMiseAJour = pos => mettreAJourAffichageGPS(pos);
+  GPS.surErreur = err => gererErreurGPS(err);
   GPS.demarrer();
   mettreAJourAffichageGPS(GPS.position);
   if (!GPS.position) { $('statut-gps-ouvrier').textContent = 'Demande de permission GPS…'; }
+}
+
+function gererErreurGPS(err) {
+  const messages = {
+    0: "Ce navigateur ne prend pas en charge la géolocalisation.",
+    1: "Localisation refusée. Autorisez la localisation pour ce site dans les réglages du navigateur, puis rechargez la page.",
+    2: "Position indisponible. Vérifiez que la localisation est activée sur l'appareil.",
+    3: "Délai dépassé pour obtenir la position. Nouvelle tentative en cours…"
+  };
+  $('statut-gps-ouvrier').textContent = messages[err.code] || 'Erreur de géolocalisation.';
+  $('badge-gps-ouvrier').innerHTML = '<span class="badge badge-rouge">✕ GPS</span>';
+  if (err.code !== 3) {
+    dessinerRadarSansGPS();
+    verifierCoherencePointage(null);
+  }
 }
 
 function mettreAJourStatutOuvrier() {
@@ -506,10 +529,8 @@ async function pointer() {
     return;
   }
   if (!GPS.position) {
-    // Mode démo : permet de pointer sans GPS
-    const pos = { lat: 50.8503 + (Math.random()-.5)*0.002, lng: 4.3517 + (Math.random()-.5)*0.002, precision: 15 };
-    GPS.position = pos;
-    mettreAJourAffichageGPS(pos);
+    afficherNotification("Position GPS indisponible — autorisez la localisation pour pouvoir pointer.", 'erreur');
+    return;
   }
   const pos = GPS.position;
   const dernier = dernierPointageDuJour(utilisateurActuel.id);
