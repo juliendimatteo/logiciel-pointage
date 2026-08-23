@@ -28,6 +28,14 @@ les appareils via Firebase Firestore.
   mot de passe ; désactiver, réinitialiser le mot de passe ou supprimer un
   accès à tout moment
 
+**Installable comme une application (PWA)** — depuis le navigateur mobile,
+« Ajouter à l'écran d'accueil » (Android) ou Partager → « Sur l'écran
+d'accueil » (iOS) installe PointagePro comme une vraie app : icône dédiée,
+plein écran sans barre de navigateur. Le contenu se met à jour automatiquement
+à chaque visite quand une connexion est disponible ; l'écran de connexion
+reste accessible hors connexion grâce au service worker, mais le pointage
+lui-même nécessite Internet (accès à Firestore).
+
 ## Architecture
 
 Le site (`index.html`, `style.css`, `app.js`) est entièrement statique et
@@ -91,6 +99,7 @@ nécessaire (accès à Firestore).
 - `index.html` — structure des vues (connexion, ouvrier, gestionnaire)
 - `style.css` — thème visuel (clair/sombre automatique)
 - `app.js` — logique applicative, synchronisation Firestore, géolocalisation
+- `manifest.json`, `service-worker.js`, `icons/` — installation en PWA
 - `.github/workflows/pages.yml` — déploiement automatique sur GitHub Pages
 
 ## Notes
