@@ -10,6 +10,7 @@ const formaterHeureCourte = d => formater(d, {hour:'2-digit',minute:'2-digit'});
 const dateLocale = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const dateAujourdhui = () => dateLocale(new Date());
 const jourLocalDe = horodatage => dateLocale(new Date(horodatage));
+const dateDepuisLocale = jour => { const [a,m,j] = jour.split('-').map(Number); return new Date(a, m-1, j); };
 const genererId = () => Math.random().toString(36).slice(2,10);
 
 function distanceGeo(lat1, lon1, lat2, lon2) {
@@ -1269,6 +1270,7 @@ async function rechercherAdresse() {
 
 /* ─── RAPPORTS ─── */
 let donneesRapport = [];
+let donneesTotauxZone = [];
 
 function initialiserDatesRapport() {
   const maintenant = new Date();
@@ -1296,6 +1298,7 @@ function genererRapport() {
 
   const ouvriers = idOuvrier ? Stockage.donnees.ouvriers.filter(o=>o.id===idOuvrier) : Stockage.donnees.ouvriers;
   donneesRapport = [];
+  const totauxParCle = new Map(); // clé: ouvrierId|jour|zoneId — somme des sessions ce jour-là dans cette zone
 
   // Un pointage = une ligne (pas un résumé par jour), pour ne pas masquer les allers-retours réels
   for (const o of ouvriers) {
@@ -1310,8 +1313,35 @@ function genererRapport() {
         ? new Date(p.horodatage) - new Date(precedent.horodatage)
         : null;
       donneesRapport.push({ ouvrier: o, pointage: p, zone, duree });
+
+      if (duree != null) {
+        const jour = jourLocalDe(p.horodatage);
+        const zonePrecedente = precedent.idZone ? Stockage.donnees.zones.find(z=>z.id===precedent.idZone) : null;
+        const cle = `${o.id}|${jour}|${precedent.idZone || 'aucune'}`;
+        if (!totauxParCle.has(cle)) totauxParCle.set(cle, { ouvrier: o, jour, zone: zonePrecedente, total: 0 });
+        totauxParCle.get(cle).total += duree;
+      }
     });
   }
+
+  donneesTotauxZone = [...totauxParCle.values()].sort((a,b) =>
+    a.ouvrier.nom !== b.ouvrier.nom ? a.ouvrier.nom.localeCompare(b.ouvrier.nom) :
+    a.jour !== b.jour ? (a.jour < b.jour ? -1 : 1) :
+    (a.zone?.nom || '').localeCompare(b.zone?.nom || '')
+  );
+
+  const corpsTotaux = $('corps-totaux-zone');
+  corpsTotaux.innerHTML = donneesTotauxZone.length ? donneesTotauxZone.map(t => `
+    <tr>
+      <td><div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:24px;height:24px;border-radius:50%;background:${couleurAvatar(t.ouvrier.nom)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;font-family:var(--police-titre);flex-shrink:0;">${initiales(t.ouvrier.nom)}</div>
+        <span style="font-weight:500;">${t.ouvrier.nom}</span>
+      </div></td>
+      <td>${formaterDateCourte(dateDepuisLocale(t.jour))}</td>
+      <td>${t.zone?t.zone.nom:'<span style="color:var(--texte-3);">Aucune zone</span>'}</td>
+      <td><span style="font-weight:600;">${formaterDuree(t.total)}</span></td>
+    </tr>
+  `).join('') : '<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--texte-3);">Aucun pointage pour cette période</td></tr>';
 
   const corps = $('corps-rapport');
   if (!donneesRapport.length) {
@@ -1346,34 +1376,18 @@ function genererRapport() {
   afficherNotification(`${donneesRapport.length} pointage(s) trouvé(s)`, 'succes');
 }
 
-async function exporterExcel() {
-  if (!donneesRapport.length) return;
-
-  const classeur = new ExcelJS.Workbook();
-  classeur.creator = 'PointagePro';
-  classeur.created = new Date();
-  const feuille = classeur.addWorksheet('Pointages', {
-    views: [{ state: 'frozen', ySplit: 3 }]
-  });
-
-  feuille.mergeCells('A1:H1');
+function preparerFeuilleRapport(classeur, nom, titreTexte, colonnes, derniereColonneLettre) {
+  const feuille = classeur.addWorksheet(nom, { views: [{ state: 'frozen', ySplit: 3 }] });
+  // Définir les colonnes écrit aussi des en-têtes en ligne 1 : le titre (écrit après,
+  // dans la cellule fusionnée) doit donc être posé APRÈS, sans quoi il se fait écraser.
+  feuille.columns = colonnes;
+  feuille.mergeCells(`A1:${derniereColonneLettre}1`);
   const titre = feuille.getCell('A1');
-  titre.value = `Rapport de pointages — du ${formaterDateCourte(new Date($('rapport-du').value))} au ${formaterDateCourte(new Date($('rapport-au').value))}`;
+  titre.value = titreTexte;
   titre.font = { size: 13, bold: true, color: { argb: 'FF1E293B' } };
   titre.alignment = { vertical: 'middle' };
   feuille.getRow(1).height = 26;
   feuille.getRow(2).height = 6;
-
-  feuille.columns = [
-    { header: 'Ouvrier',        key: 'ouvrier',  width: 24 },
-    { header: 'Métier',         key: 'metier',   width: 18 },
-    { header: 'Date',           key: 'date',     width: 13 },
-    { header: 'Heure',          key: 'heure',    width: 10 },
-    { header: 'Type',           key: 'type',     width: 11 },
-    { header: 'Zone',           key: 'zone',     width: 20 },
-    { header: 'Durée session',  key: 'duree',    width: 14 },
-    { header: 'Statut',         key: 'statut',   width: 14 },
-  ];
 
   const ligneEntetes = feuille.getRow(3);
   feuille.columns.forEach((col, i) => { ligneEntetes.getCell(i+1).value = col.header; });
@@ -1384,6 +1398,60 @@ async function exporterExcel() {
     cellule.border = { bottom: { style: 'thin', color: { argb: 'FF1E40AF' } } };
   });
   ligneEntetes.height = 20;
+  return feuille;
+}
+
+function styliserLignesRapport(feuille, derniereColonneLettre) {
+  feuille.eachRow((ligne, num) => {
+    if (num < 3) return;
+    ligne.eachCell({ includeEmpty: true }, cellule => {
+      cellule.border = { bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+      if (num % 2 === 0) {
+        cellule.fill = cellule.fill?.fgColor ? cellule.fill : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+      }
+    });
+  });
+  feuille.autoFilter = { from: 'A3', to: `${derniereColonneLettre}3` };
+}
+
+async function exporterExcel() {
+  if (!donneesRapport.length) return;
+
+  const classeur = new ExcelJS.Workbook();
+  classeur.creator = 'PointagePro';
+  classeur.created = new Date();
+  const titrePeriode = `du ${formaterDateCourte(new Date($('rapport-du').value))} au ${formaterDateCourte(new Date($('rapport-au').value))}`;
+
+  const feuilleTotaux = preparerFeuilleRapport(classeur, 'Totaux par zone',
+    `Totaux par jour et par zone — ${titrePeriode}`,
+    [
+      { header: 'Ouvrier',      key: 'ouvrier', width: 24 },
+      { header: 'Date',         key: 'date',    width: 13 },
+      { header: 'Zone',         key: 'zone',    width: 24 },
+      { header: 'Temps total',  key: 'total',   width: 14 },
+    ], 'D');
+  donneesTotauxZone.forEach(t => {
+    feuilleTotaux.addRow({
+      ouvrier: t.ouvrier.nom,
+      date: formaterDateCourte(dateDepuisLocale(t.jour)),
+      zone: t.zone ? t.zone.nom : 'Aucune zone',
+      total: formaterDuree(t.total),
+    });
+  });
+  styliserLignesRapport(feuilleTotaux, 'D');
+
+  const feuille = preparerFeuilleRapport(classeur, 'Pointages',
+    `Rapport de pointages — ${titrePeriode}`,
+    [
+      { header: 'Ouvrier',        key: 'ouvrier',  width: 24 },
+      { header: 'Métier',         key: 'metier',   width: 18 },
+      { header: 'Date',           key: 'date',     width: 13 },
+      { header: 'Heure',          key: 'heure',    width: 10 },
+      { header: 'Type',           key: 'type',     width: 11 },
+      { header: 'Zone',           key: 'zone',     width: 20 },
+      { header: 'Durée session',  key: 'duree',    width: 14 },
+      { header: 'Statut',         key: 'statut',   width: 14 },
+    ], 'H');
 
   donneesRapport.forEach(r => {
     const p = r.pointage;
@@ -1415,17 +1483,7 @@ async function exporterExcel() {
     }
   });
 
-  feuille.eachRow((ligne, num) => {
-    if (num < 3) return;
-    ligne.eachCell({ includeEmpty: true }, cellule => {
-      cellule.border = { bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
-      if (num % 2 === 0) {
-        cellule.fill = cellule.fill?.fgColor ? cellule.fill : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
-      }
-    });
-  });
-
-  feuille.autoFilter = { from: 'A3', to: 'H3' };
+  styliserLignesRapport(feuille, 'H');
 
   const tampon = await classeur.xlsx.writeBuffer();
   const blob = new Blob([tampon], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

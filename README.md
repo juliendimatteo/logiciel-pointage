@@ -20,9 +20,9 @@ les appareils via Firebase Firestore.
   actuellement présents, mise à jour automatiquement
 - Gestion des ouvriers (ajout, suppression)
 - Gestion des zones de chantier (nom, adresse ou coordonnées GPS, rayon)
-- Rapports détaillés (un pointage par ligne, avec durée de session pour
-  chaque sortie) par période et par ouvrier, avec export Excel (.xlsx)
-  mis en forme
+- Rapports par période et par ouvrier : totaux de temps passé par jour
+  et par zone, et détail de chaque pointage (avec durée de session pour
+  chaque sortie) ; export Excel (.xlsx) mis en forme sur deux feuilles
 - Onglet **Comptes** (réservé à l'administrateur) : autoriser l'accès
   gestionnaire à un tiers (ex. secrétaire) sous un nom dédié, avec son propre
   mot de passe ; désactiver, réinitialiser le mot de passe ou supprimer un

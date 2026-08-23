@@ -375,6 +375,28 @@
         <button class="bouton bouton-primaire" onclick="genererRapport()">Générer</button>
         <button class="bouton bouton-fantome" onclick="exporterExcel()" id="bouton-export" style="display:none;">⬇ Exporter Excel</button>
       </div>
+      <div class="entete-section" style="margin:24px 0 14px;">
+        <div class="titre-section">Totaux par jour et par zone</div>
+      </div>
+      <div class="conteneur-tableau-rapport">
+        <table class="tableau-rapport" id="tableau-totaux-zone">
+          <thead>
+            <tr>
+              <th>Ouvrier</th>
+              <th>Date</th>
+              <th>Zone</th>
+              <th>Temps total</th>
+            </tr>
+          </thead>
+          <tbody id="corps-totaux-zone">
+            <tr><td colspan="4" style="text-align:center;padding:32px;color:var(--texte-3);">Sélectionnez une période et cliquez sur Générer</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="entete-section" style="margin:28px 0 14px;">
+        <div class="titre-section">Détail des pointages</div>
+      </div>
       <div class="conteneur-tableau-rapport">
         <table class="tableau-rapport" id="tableau-rapport">
           <thead>
