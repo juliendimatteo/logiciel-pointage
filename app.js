@@ -93,23 +93,26 @@ const Stockage = {
     ouvriers.forEach(({id, ...data}) => batch.set(db.collection('ouvriers').doc(id), data));
     zones.forEach(({id, ...data}) => batch.set(db.collection('zones').doc(id), data));
     pointages.forEach(({id, ...data}) => batch.set(db.collection('pointages').doc(id), data));
+    batch.set(db.collection('meta').doc('etat'), { initialise: true });
     await batch.commit();
   }
 };
 
-let premiereSyncOuvriers = true;
+let verificationInitialisationFaite = false;
 
 async function verifierEtInitialiserDonnees() {
-  if (Stockage.donnees.ouvriers.length > 0) return;
-  const snap = await db.collection('ouvriers').limit(1).get();
-  if (!snap.empty) return;
+  // Indicateur permanent et partagé : une fois posé, la démo ne revient plus
+  // jamais, même si tous les ouvriers/zones sont ensuite supprimés.
+  const refEtat = db.collection('meta').doc('etat');
+  const docEtat = await refEtat.get();
+  if (docEtat.exists) return;
   await Stockage.initialiserFirestore();
 }
 
 function demarrerSynchronisation() {
   db.collection('ouvriers').onSnapshot(snap => {
     Stockage.donnees.ouvriers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (premiereSyncOuvriers) { premiereSyncOuvriers = false; verifierEtInitialiserDonnees(); }
+    if (!verificationInitialisationFaite) { verificationInitialisationFaite = true; verifierEtInitialiserDonnees(); }
     rafraichirSelonContexte();
   }, err => { console.error('Erreur de synchronisation (ouvriers) :', err); afficherNotification('Synchronisation impossible (ouvriers)', 'erreur'); });
 
