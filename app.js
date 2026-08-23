@@ -1164,27 +1164,86 @@ function genererRapport() {
   afficherNotification(`${donneesRapport.length} ligne(s) générée(s)`, 'succes');
 }
 
-function exporterCSV() {
+async function exporterExcel() {
   if (!donneesRapport.length) return;
-  const entetes = ['Ouvrier','Métier','Date','Entrée','Sortie','Durée (min)','Zone','Statut'];
-  const lignes = donneesRapport.map(r=>[
-    r.ouvrier.nom, r.ouvrier.metier,
-    formaterDateCourte(new Date(r.jour)),
-    r.premiereEntree?formaterHeureCourte(new Date(r.premiereEntree.horodatage)):'',
-    r.derniereSortie?formaterHeureCourte(new Date(r.derniereSortie.horodatage)):'En cours',
-    r.tempsTotal>0?Math.round(r.tempsTotal/60000):'',
-    r.zone?r.zone.nom:'',
-    r.horsZone?'Hors zone':'OK'
-  ]);
-  const csv = [entetes,...lignes].map(l=>l.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const bom = '﻿';
-  const blob = new Blob([bom+csv], {type:'text/csv;charset=utf-8;'});
+
+  const classeur = new ExcelJS.Workbook();
+  classeur.creator = 'PointagePro';
+  classeur.created = new Date();
+  const feuille = classeur.addWorksheet('Pointages', {
+    views: [{ state: 'frozen', ySplit: 3 }]
+  });
+
+  feuille.mergeCells('A1:H1');
+  const titre = feuille.getCell('A1');
+  titre.value = `Rapport de pointages — du ${formaterDateCourte(new Date($('rapport-du').value))} au ${formaterDateCourte(new Date($('rapport-au').value))}`;
+  titre.font = { size: 13, bold: true, color: { argb: 'FF1E293B' } };
+  titre.alignment = { vertical: 'middle' };
+  feuille.getRow(1).height = 26;
+  feuille.getRow(2).height = 6;
+
+  feuille.columns = [
+    { header: 'Ouvrier',   key: 'ouvrier',  width: 24 },
+    { header: 'Métier',    key: 'metier',   width: 18 },
+    { header: 'Date',      key: 'date',     width: 13 },
+    { header: 'Entrée',    key: 'entree',   width: 11 },
+    { header: 'Sortie',    key: 'sortie',   width: 11 },
+    { header: 'Durée',     key: 'duree',    width: 10 },
+    { header: 'Zone',      key: 'zone',     width: 20 },
+    { header: 'Statut',    key: 'statut',   width: 14 },
+  ];
+
+  const ligneEntetes = feuille.getRow(3);
+  feuille.columns.forEach((col, i) => { ligneEntetes.getCell(i+1).value = col.header; });
+  ligneEntetes.eachCell(cellule => {
+    cellule.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cellule.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } };
+    cellule.alignment = { vertical: 'middle', horizontal: 'left' };
+    cellule.border = { bottom: { style: 'thin', color: { argb: 'FF1E40AF' } } };
+  });
+  ligneEntetes.height = 20;
+
+  donneesRapport.forEach(r => {
+    const ligne = feuille.addRow({
+      ouvrier: r.ouvrier.nom,
+      metier: r.ouvrier.metier || '',
+      date: formaterDateCourte(new Date(r.jour)),
+      entree: r.premiereEntree ? formaterHeureCourte(new Date(r.premiereEntree.horodatage)) : '',
+      sortie: r.derniereSortie ? formaterHeureCourte(new Date(r.derniereSortie.horodatage)) : 'En cours',
+      duree: r.tempsTotal > 0 ? formaterDuree(r.tempsTotal) : '',
+      zone: r.zone ? r.zone.nom : '',
+      statut: r.horsZone ? 'Hors zone' : 'OK',
+    });
+    const celluleStatut = ligne.getCell('statut');
+    if (r.horsZone) {
+      celluleStatut.font = { color: { argb: 'FFD97706' }, bold: true };
+      celluleStatut.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } };
+    } else {
+      celluleStatut.font = { color: { argb: 'FF15803D' }, bold: true };
+      celluleStatut.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+    }
+  });
+
+  feuille.eachRow((ligne, num) => {
+    if (num < 3) return;
+    ligne.eachCell({ includeEmpty: true }, cellule => {
+      cellule.border = { bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+      if (num % 2 === 0) {
+        cellule.fill = cellule.fill?.fgColor ? cellule.fill : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+      }
+    });
+  });
+
+  feuille.autoFilter = { from: 'A3', to: 'H3' };
+
+  const tampon = await classeur.xlsx.writeBuffer();
+  const blob = new Blob([tampon], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href=url; a.download=`pointages_${$('rapport-du').value}_${$('rapport-au').value}.csv`;
+  a.href = url; a.download = `pointages_${$('rapport-du').value}_${$('rapport-au').value}.xlsx`;
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
-  afficherNotification('Export CSV téléchargé', 'succes');
+  afficherNotification('Rapport Excel téléchargé', 'succes');
 }
 
 /* ═══════════════════════════════════════════════════════════

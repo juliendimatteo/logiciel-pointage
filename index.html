@@ -366,7 +366,7 @@
           </div>
         </div>
         <button class="bouton bouton-primaire" onclick="genererRapport()">Générer</button>
-        <button class="bouton bouton-fantome" onclick="exporterCSV()" id="bouton-export" style="display:none;">⬇ Exporter CSV</button>
+        <button class="bouton bouton-fantome" onclick="exporterExcel()" id="bouton-export" style="display:none;">⬇ Exporter Excel</button>
       </div>
       <div class="conteneur-tableau-rapport">
         <table class="tableau-rapport" id="tableau-rapport">
@@ -391,6 +391,7 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>

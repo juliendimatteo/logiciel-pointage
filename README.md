@@ -20,7 +20,7 @@ les appareils via Firebase Firestore.
   actuellement présents, mise à jour automatiquement
 - Gestion des ouvriers (ajout, suppression)
 - Gestion des zones de chantier (nom, adresse ou coordonnées GPS, rayon)
-- Rapports par période et par ouvrier, avec export CSV
+- Rapports par période et par ouvrier, avec export Excel (.xlsx) mis en forme
 
 ## Architecture
 
