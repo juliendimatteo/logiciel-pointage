@@ -1418,7 +1418,7 @@ async function exporterExcel() {
   if (!donneesRapport.length) return;
 
   const classeur = new ExcelJS.Workbook();
-  classeur.creator = 'PointagePro';
+  classeur.creator = 'PointagePro DI MATTEO';
   classeur.created = new Date();
   const titrePeriode = `du ${formaterDateCourte(new Date($('rapport-du').value))} au ${formaterDateCourte(new Date($('rapport-au').value))}`;
 
