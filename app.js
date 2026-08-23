@@ -172,12 +172,19 @@ const GPS = {
     if (this.idSuivi !== null) { navigator.geolocation.clearWatch(this.idSuivi); this.idSuivi = null; }
   },
   zoneLaPlusProche(lat, lng) {
-    let meilleure = null, meilleureDist = Infinity;
+    // Priorité à une zone dans laquelle on se trouve réellement (au cas où
+    // plusieurs zones existent, on prend la plus proche parmi celles-là) ;
+    // seulement si on n'est dans aucune zone, on retombe sur la plus proche
+    // en distance brute (pour afficher "hors zone, à X m de la zone Y").
+    let meilleureDansZone = null, meilleureDistDansZone = Infinity;
+    let meilleureGlobale = null, meilleureDistGlobale = Infinity;
     for (const z of Stockage.donnees.zones) {
       const d = distanceGeo(lat, lng, z.lat, z.lng);
-      if (d < meilleureDist) { meilleureDist = d; meilleure = z; }
+      if (d < meilleureDistGlobale) { meilleureDistGlobale = d; meilleureGlobale = z; }
+      if (d <= z.rayon && d < meilleureDistDansZone) { meilleureDistDansZone = d; meilleureDansZone = z; }
     }
-    return meilleure ? { zone: meilleure, distance: meilleureDist, dansZone: meilleureDist <= meilleure.rayon } : null;
+    if (meilleureDansZone) return { zone: meilleureDansZone, distance: meilleureDistDansZone, dansZone: true };
+    return meilleureGlobale ? { zone: meilleureGlobale, distance: meilleureDistGlobale, dansZone: false } : null;
   }
 };
 
