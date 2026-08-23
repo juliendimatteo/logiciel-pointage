@@ -919,8 +919,9 @@ function exporterCSV() {
 /* ═══════════════════════════════════════════════════════════
    INITIALISATION
 ═══════════════════════════════════════════════════════════ */
+const donneesDejaExistantes = localStorage.getItem(Stockage.CLE) !== null;
 Stockage.charger();
-if (!Stockage.donnees.ouvriers.length) Stockage.initialiser();
+if (!donneesDejaExistantes) Stockage.initialiser();
 
 const session = chargerSession();
 if (session) {
