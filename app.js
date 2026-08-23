@@ -7,7 +7,9 @@ const formaterDate = d => formater(d, {day:'2-digit',month:'long',year:'numeric'
 const formaterDateCourte = d => formater(d, {day:'2-digit',month:'2-digit',year:'numeric'});
 const formaterHeure = d => formater(d, {hour:'2-digit',minute:'2-digit',second:'2-digit'});
 const formaterHeureCourte = d => formater(d, {hour:'2-digit',minute:'2-digit'});
-const dateAujourdhui = () => new Date().toISOString().slice(0,10);
+const dateLocale = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const dateAujourdhui = () => dateLocale(new Date());
+const jourLocalDe = horodatage => dateLocale(new Date(horodatage));
 const genererId = () => Math.random().toString(36).slice(2,10);
 
 function distanceGeo(lat1, lon1, lat2, lon2) {
@@ -483,7 +485,7 @@ function mettreAJourStatutOuvrier() {
   }
   $('bouton-pointage').disabled = false;
   const aujourdhui = dateAujourdhui();
-  const pointages = Stockage.donnees.pointages.filter(p=>p.idOuvrier===utilisateurActuel.id && p.horodatage.startsWith(aujourdhui));
+  const pointages = Stockage.donnees.pointages.filter(p=>p.idOuvrier===utilisateurActuel.id && jourLocalDe(p.horodatage) === aujourdhui);
   pointages.sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
 
   const dernier = pointages[pointages.length-1];
@@ -533,7 +535,7 @@ function mettreAJourStatutOuvrier() {
 function dernierPointageDuJour(idOuvrier) {
   const aujourdhui = dateAujourdhui();
   const pointages = Stockage.donnees.pointages
-    .filter(p=>p.idOuvrier===idOuvrier && p.horodatage.startsWith(aujourdhui))
+    .filter(p=>p.idOuvrier===idOuvrier && jourLocalDe(p.horodatage) === aujourdhui)
     .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
   return pointages[pointages.length-1] || null;
 }
@@ -651,7 +653,7 @@ async function pointer() {
 function afficherHistoriqueOuvrier() {
   const aujourdhui = dateAujourdhui();
   const pointages = Stockage.donnees.pointages
-    .filter(p=>p.idOuvrier===utilisateurActuel.id && p.horodatage.startsWith(aujourdhui))
+    .filter(p=>p.idOuvrier===utilisateurActuel.id && jourLocalDe(p.horodatage) === aujourdhui)
     .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
 
   const el = $('liste-historique-ouvrier');
@@ -897,7 +899,7 @@ function actualiserGestionnaire() {
   let presents=0, absents=0, horsZone=0;
   const cartes = ouvriers.map(o => {
     const pointagesJour = Stockage.donnees.pointages
-      .filter(p=>p.idOuvrier===o.id && p.horodatage.startsWith(aujourdhui))
+      .filter(p=>p.idOuvrier===o.id && jourLocalDe(p.horodatage) === aujourdhui)
       .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
     const dernier = pointagesJour[pointagesJour.length-1];
     const estPresent = dernier && dernier.type==='entree';
@@ -1122,7 +1124,7 @@ function afficherZones() {
     const aujourdhui = dateAujourdhui();
     const ouvriersPresents = Stockage.donnees.ouvriers.filter(o => {
       const pointages = Stockage.donnees.pointages
-        .filter(p=>p.idOuvrier===o.id && p.horodatage.startsWith(aujourdhui))
+        .filter(p=>p.idOuvrier===o.id && jourLocalDe(p.horodatage) === aujourdhui)
         .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
       const dernier = pointages[pointages.length-1];
       return dernier && dernier.type==='entree' && dernier.idZone===z.id;
@@ -1271,7 +1273,7 @@ let donneesRapport = [];
 function initialiserDatesRapport() {
   const maintenant = new Date();
   const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1);
-  $('rapport-du').value = debutMois.toISOString().slice(0,10);
+  $('rapport-du').value = dateLocale(debutMois);
   $('rapport-au').value = dateAujourdhui();
 }
 
@@ -1292,10 +1294,11 @@ function genererRapport() {
 
   if (!du||!au||du>au) { afficherNotification('Sélectionnez une période valide', 'erreur'); return; }
 
-  // Construire le résumé par ouvrier et par jour
+  // Construire le résumé par ouvrier et par jour (calendrier local, pas UTC)
   const jours = [];
-  const d = new Date(du);
-  while (d.toISOString().slice(0,10) <= au) { jours.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+  const [anneeDu, moisDu, jourDu] = du.split('-').map(Number);
+  const d = new Date(anneeDu, moisDu - 1, jourDu);
+  while (dateLocale(d) <= au) { jours.push(dateLocale(d)); d.setDate(d.getDate()+1); }
 
   const ouvriers = idOuvrier ? Stockage.donnees.ouvriers.filter(o=>o.id===idOuvrier) : Stockage.donnees.ouvriers;
   donneesRapport = [];
@@ -1303,7 +1306,7 @@ function genererRapport() {
   for (const o of ouvriers) {
     for (const jour of jours) {
       const pointages = Stockage.donnees.pointages
-        .filter(p=>p.idOuvrier===o.id && p.horodatage.startsWith(jour))
+        .filter(p=>p.idOuvrier===o.id && jourLocalDe(p.horodatage) === jour)
         .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
       if (!pointages.length) continue;
       const premiereEntree = pointages.find(p=>p.type==='entree');
