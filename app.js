@@ -554,7 +554,7 @@ function afficherHistoriqueOuvrier() {
       </div>
       <div class="info-historique">
         <div class="type-historique" style="color:${estEntree?'var(--vert)':'var(--rouge)'};">${estEntree?'Entrée':'Sortie'}</div>
-        <div class="meta-historique">${zone?zone.nom:'Hors zone'}${!p.dansZone&&Stockage.donnees.zones.length?' · ⚠️ Hors périmètre':''}</div>
+        <div class="meta-historique">${p.forcee ? 'Sortie forcée par le gestionnaire' : (zone?zone.nom:'Hors zone')}${!p.forcee&&!p.dansZone&&Stockage.donnees.zones.length?' · ⚠️ Hors périmètre':''}</div>
       </div>
       <div class="heure-historique">${formaterHeureCourte(new Date(p.horodatage))}</div>
     </div>`;
@@ -825,6 +825,7 @@ function actualiserGestionnaire() {
           <span class="valeur-stat-ouvrier">${zone?zone.nom:estPresent?'Hors zone':'—'}</span>
         </div>
       </div>
+      ${estPresent ? `<button class="bouton bouton-fantome bouton-petit" style="width:100%;margin-top:12px;" onclick="forcerSortie('${o.id}')">Forcer la sortie</button>` : ''}
     </div>`;
   });
 
@@ -845,6 +846,22 @@ function calculerTempsTotal(pointages) {
   const dernier = pointages[pointages.length-1];
   if (dernier && dernier.type==='entree') total += Date.now() - new Date(dernier.horodatage);
   return total;
+}
+
+function forcerSortie(idOuvrier) {
+  const o = Stockage.donnees.ouvriers.find(x => x.id === idOuvrier);
+  if (!o) return;
+  ouvrirDialogue('Forcer la sortie', `Enregistrer maintenant une sortie pour « ${o.nom} » ? À utiliser s'il a oublié de pointer sa sortie.`, async () => {
+    try {
+      await db.collection('pointages').doc(genererId()).set({
+        idOuvrier, type: 'sortie', lat: null, lng: null,
+        horodatage: new Date().toISOString(), idZone: null, dansZone: false, forcee: true
+      });
+      afficherNotification(`Sortie forcée enregistrée pour ${o.nom}`, 'succes');
+    } catch (e) {
+      afficherNotification('Erreur : ' + e.message, 'erreur');
+    }
+  });
 }
 
 /* ─── GESTION DES OUVRIERS ─── */
