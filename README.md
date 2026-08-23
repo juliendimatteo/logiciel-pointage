@@ -13,7 +13,7 @@ les appareils via Firebase Firestore.
 - Alerte si la position GPS ne correspond plus au statut de pointage
 - Historique des pointages du jour
 
-**Gestionnaire** (accès protégé par mot de passe)
+**Gestionnaire** (accès protégé par mot de passe, par compte nommé)
 - Vue d'ensemble en temps réel : ouvriers présents / absents / hors zone,
   mis à jour instantanément dès qu'un ouvrier pointe depuis son appareil
 - Carte en direct (Leaflet / OpenStreetMap) : position des ouvriers
@@ -21,6 +21,10 @@ les appareils via Firebase Firestore.
 - Gestion des ouvriers (ajout, suppression)
 - Gestion des zones de chantier (nom, adresse ou coordonnées GPS, rayon)
 - Rapports par période et par ouvrier, avec export Excel (.xlsx) mis en forme
+- Onglet **Comptes** (réservé à l'administrateur) : autoriser l'accès
+  gestionnaire à un tiers (ex. secrétaire) sous un nom dédié, avec son propre
+  mot de passe ; désactiver, réinitialiser le mot de passe ou supprimer un
+  accès à tout moment
 
 ## Architecture
 
@@ -31,8 +35,20 @@ Firestore**, avec synchronisation en temps réel : tous les appareils
 connectés (gestionnaire et ouvriers) voient les mêmes données se mettre à
 jour instantanément, sans recharger la page.
 
-Le mot de passe gestionnaire et la session de connexion restent en local
-(`localStorage`), propres à chaque appareil/navigateur.
+Les comptes gestionnaire (nom, mot de passe haché SHA-256, statut
+administrateur/actif) sont stockés dans Firestore (collection `comptes`),
+partagés entre tous les appareils : un accès créé ou révoqué par
+l'administrateur prend effet pour tout le monde. Seule la session de
+connexion (qui est actuellement connecté sur cet appareil) reste en local
+(`localStorage`).
+
+**Limite assumée** : comme pour le reste de l'application (site 100%
+statique, sans serveur), les règles Firestore ci-dessous autorisent tout
+client authentifié anonymement à lire/écrire la collection `comptes`. La
+distinction administrateur/accès simple n'est donc appliquée que côté
+interface, pas au niveau des données : elle empêche un usage normal
+inapproprié, mais pas un utilisateur déterminé à inspecter le code ou la
+base Firestore directement.
 
 ### Configuration Firebase requise
 
@@ -77,8 +93,9 @@ nécessaire (accès à Firestore).
 
 ## Notes
 
-- Le GPS du navigateur est requis pour la détection de zone ; sans autorisation,
-  l'application reste utilisable en mode démo (position simulée).
+- Le GPS du navigateur est requis pour pointer ; sans autorisation de
+  localisation (ou en cas d'échec), le pointage est bloqué avec un message
+  explicite plutôt que d'utiliser une position simulée.
 - Au tout premier lancement (base Firestore vide), un jeu de données
   d'exemple (ouvriers, zones, pointages) est créé automatiquement.
 - Tant qu'un ouvrier est connecté avec son statut « Présent », son

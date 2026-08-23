@@ -61,7 +61,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 const Stockage = {
-  donnees: { ouvriers: [], zones: [], pointages: [], positions: [] },
+  donnees: { ouvriers: [], zones: [], pointages: [], positions: [], comptes: [] },
 
   async initialiserFirestore() {
     const maintenant = new Date();
@@ -111,6 +111,7 @@ async function verifierEtInitialiserDonnees() {
 
 let syncOuvriersPrete = false;
 let syncZonesPrete = false;
+let syncComptesPrete = false;
 
 function donneesEssentiellesChargees() {
   return syncOuvriersPrete && syncZonesPrete;
@@ -139,11 +140,18 @@ function demarrerSynchronisation() {
     Stockage.donnees.positions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     if (carteLeaflet) mettreAJourCarte();
   }, err => { console.error('Erreur de synchronisation (positions) :', err); });
+
+  db.collection('comptes').onSnapshot(snap => {
+    Stockage.donnees.comptes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    syncComptesPrete = true;
+    rafraichirSelonContexte();
+  }, err => { console.error('Erreur de synchronisation (comptes) :', err); });
 }
 
 function rafraichirSelonContexte() {
   if (!utilisateurActuel) {
     if (roleSelectionne === 'ouvrier') peuplerListeOuvriersConnexion();
+    if (roleSelectionne === 'gestionnaire') peuplerConnexionGestionnaire();
     return;
   }
   if (utilisateurActuel.role === 'gestionnaire') {
@@ -151,6 +159,7 @@ function rafraichirSelonContexte() {
     afficherOuvriersGestion();
     afficherZones();
     remplirOuvriersRapport();
+    if (utilisateurActuel.admin) afficherComptes();
     if (carteLeaflet) mettreAJourCarte();
   } else if (utilisateurActuel.role === 'ouvrier') {
     mettreAJourStatutOuvrier();
@@ -248,7 +257,6 @@ $('dialogue').addEventListener('click', e => { if (e.target === $('dialogue')) f
    CONNEXION
 ═══════════════════════════════════════════════════════════ */
 let roleSelectionne = null;
-const CLE_MDP_GESTIONNAIRE = 'pointagepro_mdp_gestionnaire';
 
 async function hacherTexte(texte) {
   const donnees = new TextEncoder().encode(texte);
@@ -261,6 +269,7 @@ function selectionnerRole(role) {
   $('role-gestionnaire').classList.toggle('selectionne', role==='gestionnaire');
   $('role-ouvrier').classList.toggle('selectionne', role==='ouvrier');
   $('section-selection-ouvrier').style.display = 'none';
+  $('section-compte-gestionnaire').style.display = 'none';
   $('section-mdp-gestionnaire').style.display = 'none';
   $('mdp-gestionnaire').value = '';
 
@@ -270,9 +279,8 @@ function selectionnerRole(role) {
     $('selection-ouvrier').onchange = () => mettreAJourBoutonConnexion();
   } else if (role === 'gestionnaire') {
     $('section-mdp-gestionnaire').style.display = 'block';
-    const mdpExiste = !!localStorage.getItem(CLE_MDP_GESTIONNAIRE);
-    $('libelle-mdp-gestionnaire').textContent = mdpExiste ? 'Mot de passe' : 'Créer un mot de passe gestionnaire';
-    $('lien-mdp-oublie').style.display = mdpExiste ? 'block' : 'none';
+    $('selection-compte-gestionnaire').onchange = () => { mettreAJourLibelleMdpGestionnaire(); mettreAJourBoutonConnexion(); };
+    peuplerConnexionGestionnaire();
   }
   mettreAJourBoutonConnexion();
 }
@@ -290,29 +298,96 @@ function peuplerListeOuvriersConnexion() {
   mettreAJourBoutonConnexion();
 }
 
+function comptesActifsConnexion() {
+  return Stockage.donnees.comptes.filter(c => c.actif);
+}
+
+function peuplerConnexionGestionnaire() {
+  if (roleSelectionne !== 'gestionnaire') return;
+  if (!syncComptesPrete) {
+    $('section-compte-gestionnaire').style.display = 'none';
+    $('indice-compte-oublie').style.display = 'none';
+    $('mdp-gestionnaire').disabled = true;
+    $('libelle-mdp-gestionnaire').textContent = 'Chargement…';
+    mettreAJourBoutonConnexion();
+    return;
+  }
+  $('mdp-gestionnaire').disabled = false;
+  const comptes = comptesActifsConnexion();
+  if (!comptes.length) {
+    $('section-compte-gestionnaire').style.display = 'none';
+    $('indice-compte-oublie').style.display = 'none';
+    $('libelle-mdp-gestionnaire').textContent = 'Créer le mot de passe administrateur';
+  } else {
+    $('section-compte-gestionnaire').style.display = 'block';
+    $('indice-compte-oublie').style.display = 'block';
+    const sel = $('selection-compte-gestionnaire');
+    const valeurActuelle = sel.value;
+    sel.innerHTML = '<option value="">-- Choisir un compte --</option>';
+    comptes.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id; opt.textContent = c.nom + (c.admin ? ' (Administrateur)' : '');
+      sel.appendChild(opt);
+    });
+    if ([...sel.options].some(o => o.value === valeurActuelle)) sel.value = valeurActuelle;
+    mettreAJourLibelleMdpGestionnaire();
+  }
+  mettreAJourBoutonConnexion();
+}
+
+function mettreAJourLibelleMdpGestionnaire() {
+  const comptes = comptesActifsConnexion();
+  if (!comptes.length) return;
+  const compte = comptes.find(c => c.id === $('selection-compte-gestionnaire').value);
+  $('libelle-mdp-gestionnaire').textContent = (compte && !compte.empreinte) ? 'Créer le mot de passe' : 'Mot de passe';
+}
+
 function mettreAJourBoutonConnexion() {
   const btn = $('bouton-connexion');
   if (!roleSelectionne) { btn.disabled = true; return; }
   if (roleSelectionne === 'ouvrier' && !$('selection-ouvrier').value) { btn.disabled = true; return; }
-  if (roleSelectionne === 'gestionnaire' && !$('mdp-gestionnaire').value) { btn.disabled = true; return; }
+  if (roleSelectionne === 'gestionnaire') {
+    if (!syncComptesPrete) { btn.disabled = true; return; }
+    if (comptesActifsConnexion().length && !$('selection-compte-gestionnaire').value) { btn.disabled = true; return; }
+    if (!$('mdp-gestionnaire').value) { btn.disabled = true; return; }
+  }
   btn.disabled = false;
 }
 
 async function seConnecter() {
   if (!roleSelectionne) return;
   if (roleSelectionne === 'gestionnaire') {
+    if (!syncComptesPrete) return;
     const mdp = $('mdp-gestionnaire').value;
     if (!mdp) return;
     const empreinte = await hacherTexte(mdp);
-    const empreinteEnregistree = localStorage.getItem(CLE_MDP_GESTIONNAIRE);
-    if (!empreinteEnregistree) {
-      localStorage.setItem(CLE_MDP_GESTIONNAIRE, empreinte);
-      afficherNotification('Mot de passe gestionnaire défini', 'succes');
-    } else if (empreinte !== empreinteEnregistree) {
+    const comptes = comptesActifsConnexion();
+
+    if (!comptes.length) {
+      const id = genererId();
+      try {
+        await db.collection('comptes').doc(id).set({ nom: 'Administrateur', empreinte, admin: true, actif: true });
+      } catch (e) { afficherNotification('Erreur : ' + e.message, 'erreur'); return; }
+      afficherNotification('Compte administrateur créé', 'succes');
+      utilisateurActuel = { role: 'gestionnaire', id, nom: 'Administrateur', admin: true };
+      enregistrerSession(utilisateurActuel);
+      afficherVueGestionnaire();
+      return;
+    }
+
+    const compte = comptes.find(c => c.id === $('selection-compte-gestionnaire').value);
+    if (!compte) { afficherNotification('Sélectionnez votre compte', 'erreur'); return; }
+
+    if (!compte.empreinte) {
+      try {
+        await db.collection('comptes').doc(compte.id).update({ empreinte });
+      } catch (e) { afficherNotification('Erreur : ' + e.message, 'erreur'); return; }
+      afficherNotification('Mot de passe défini', 'succes');
+    } else if (empreinte !== compte.empreinte) {
       afficherNotification('Mot de passe incorrect', 'erreur');
       return;
     }
-    utilisateurActuel = { role: 'gestionnaire', nom: 'Gestionnaire' };
+    utilisateurActuel = { role: 'gestionnaire', id: compte.id, nom: compte.nom, admin: !!compte.admin };
     enregistrerSession(utilisateurActuel);
     afficherVueGestionnaire();
   } else {
@@ -323,16 +398,6 @@ async function seConnecter() {
     enregistrerSession(utilisateurActuel);
     afficherVueOuvrier();
   }
-}
-
-function reinitialiserMotDePasseGestionnaire() {
-  ouvrirDialogue('Réinitialiser le mot de passe', 'Le mot de passe gestionnaire actuel sera oublié et un nouveau pourra être défini à la prochaine connexion. Continuer ?', () => {
-    localStorage.removeItem(CLE_MDP_GESTIONNAIRE);
-    $('mdp-gestionnaire').value = '';
-    $('libelle-mdp-gestionnaire').textContent = 'Créer un mot de passe gestionnaire';
-    $('lien-mdp-oublie').style.display = 'none';
-    afficherNotification('Mot de passe réinitialisé', 'info');
-  });
 }
 
 function seDeconnecter() {
@@ -710,12 +775,17 @@ function dessinerRadarSansGPS() {
 ═══════════════════════════════════════════════════════════ */
 function afficherVueGestionnaire() {
   afficherVue('gestionnaire');
+  $('nom-utilisateur-en-tete').textContent = utilisateurActuel.nom;
+  $('role-utilisateur-en-tete').textContent = utilisateurActuel.admin ? 'Administrateur' : 'Accès gestionnaire';
+  $('avatar-en-tete').textContent = initiales(utilisateurActuel.nom);
+  $('bouton-onglet-comptes').style.display = utilisateurActuel.admin ? '' : 'none';
   actualiserGestionnaire();
   afficherOuvriersGestion();
   reinitialiserFormulaireZone();
   afficherZones();
   initialiserDatesRapport();
   remplirOuvriersRapport();
+  if (utilisateurActuel.admin) afficherComptes();
 }
 
 function changerOnglet(nom, btn) {
@@ -910,6 +980,86 @@ function forcerSortie(idOuvrier) {
     } catch (e) {
       afficherNotification('Erreur : ' + e.message, 'erreur');
     }
+  });
+}
+
+/* ─── COMPTES GESTIONNAIRE (accès administrateur / tiers) ─── */
+function nbAdminsActifs() {
+  return Stockage.donnees.comptes.filter(c => c.admin && c.actif).length;
+}
+
+function afficherComptes() {
+  const el = $('liste-comptes');
+  if (!Stockage.donnees.comptes.length) {
+    el.innerHTML = '<div class="etat-vide"><div class="icone-etat-vide">🔑</div><div class="texte-etat-vide">Aucun accès secondaire. Autorisez un tiers (ex. secrétaire) ci-contre.</div></div>';
+    return;
+  }
+  el.innerHTML = Stockage.donnees.comptes.map(c => {
+    const estSoiMeme = c.id === utilisateurActuel?.id;
+    const peutSupprimer = !estSoiMeme && (!c.admin || nbAdminsActifs() > 1);
+    return `<div class="carte carte-zone">
+      <div class="haut-carte-zone">
+        <div>
+          <div class="nom-zone">${c.admin ? '👑' : '🔑'} ${c.nom}${estSoiMeme ? ' (vous)' : ''}</div>
+          <div class="meta-zone">
+            ${c.admin ? 'Administrateur' : 'Accès gestionnaire'}
+            · <span class="badge ${c.actif ? 'badge-vert' : 'badge-gris'}">${c.actif ? 'Actif' : 'Désactivé'}</span>
+            ${c.empreinte ? '' : '<span class="badge badge-ambre">Mot de passe non défini</span>'}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">
+          <button class="bouton bouton-fantome bouton-petit" onclick="basculerActifCompte('${c.id}')">${c.actif ? 'Désactiver' : 'Activer'}</button>
+          <button class="bouton bouton-fantome bouton-petit" onclick="reinitialiserMotDePasseCompte('${c.id}')">Réinitialiser le mot de passe</button>
+          ${peutSupprimer ? `<button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);" onclick="supprimerCompte('${c.id}')">Supprimer</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function ajouterCompte() {
+  const nom = $('nom-compte').value.trim();
+  if (!nom) { afficherNotification('Indiquez le nom de la personne', 'erreur'); return; }
+  try {
+    await db.collection('comptes').doc(genererId()).set({ nom, empreinte: null, admin: false, actif: true });
+    $('nom-compte').value = '';
+    afficherNotification(`Accès créé pour ${nom} — elle définira son mot de passe à sa première connexion`, 'succes');
+  } catch (e) {
+    afficherNotification('Erreur : ' + e.message, 'erreur');
+  }
+}
+
+function basculerActifCompte(id) {
+  const c = Stockage.donnees.comptes.find(x => x.id === id);
+  if (!c) return;
+  if (c.admin && c.actif && nbAdminsActifs() <= 1) {
+    afficherNotification('Impossible de désactiver le dernier compte administrateur', 'erreur');
+    return;
+  }
+  db.collection('comptes').doc(id).update({ actif: !c.actif })
+    .then(() => afficherNotification(c.actif ? `Accès de ${c.nom} désactivé` : `Accès de ${c.nom} réactivé`, 'succes'))
+    .catch(e => afficherNotification('Erreur : ' + e.message, 'erreur'));
+}
+
+function reinitialiserMotDePasseCompte(id) {
+  const c = Stockage.donnees.comptes.find(x => x.id === id);
+  if (!c) return;
+  ouvrirDialogue('Réinitialiser le mot de passe', `« ${c.nom} » devra définir un nouveau mot de passe à sa prochaine connexion. Continuer ?`, () => {
+    db.collection('comptes').doc(id).update({ empreinte: null })
+      .then(() => afficherNotification('Mot de passe réinitialisé', 'succes'))
+      .catch(e => afficherNotification('Erreur : ' + e.message, 'erreur'));
+  });
+}
+
+function supprimerCompte(id) {
+  const c = Stockage.donnees.comptes.find(x => x.id === id);
+  if (!c) return;
+  if (c.id === utilisateurActuel?.id) { afficherNotification('Impossible de supprimer votre propre compte', 'erreur'); return; }
+  if (c.admin && nbAdminsActifs() <= 1) { afficherNotification('Impossible de supprimer le dernier compte administrateur', 'erreur'); return; }
+  ouvrirDialogue('Supprimer cet accès', `Supprimer définitivement l'accès de « ${c.nom} » ?`, () => {
+    db.collection('comptes').doc(id).delete()
+      .then(() => afficherNotification('Accès supprimé', 'succes'))
+      .catch(e => afficherNotification('Erreur : ' + e.message, 'erreur'));
   });
 }
 

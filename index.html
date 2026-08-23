@@ -64,11 +64,17 @@
             <option value="">-- Choisir --</option>
           </select>
         </div>
+        <div id="section-compte-gestionnaire" class="conteneur-selection-ouvrier" style="display:none;">
+          <label class="libelle-champ">Compte</label>
+          <select id="selection-compte-gestionnaire" class="champ-liste">
+            <option value="">-- Choisir un compte --</option>
+          </select>
+        </div>
         <div id="section-mdp-gestionnaire" class="champ" style="display:none;margin-bottom:24px;">
           <label class="libelle-champ" id="libelle-mdp-gestionnaire">Mot de passe</label>
           <input type="password" id="mdp-gestionnaire" placeholder="••••••••" onkeydown="if(event.key==='Enter'){event.preventDefault();seConnecter();}" oninput="mettreAJourBoutonConnexion()">
-          <div id="lien-mdp-oublie" style="display:none;margin-top:4px;">
-            <button class="bouton bouton-fantome bouton-petit" onclick="reinitialiserMotDePasseGestionnaire()" type="button">Mot de passe oublié ?</button>
+          <div id="indice-compte-oublie" style="display:none;margin-top:4px;font-size:12px;color:var(--texte-3);">
+            Mot de passe oublié ou accès désactivé ? Contactez l'administrateur.
           </div>
         </div>
         <button class="bouton-connexion" id="bouton-connexion" onclick="seConnecter()" disabled>Continuer →</button>
@@ -200,10 +206,10 @@
     <div class="espaceur-en-tete"></div>
     <div class="utilisateur-en-tete">
       <div>
-        <div class="nom-utilisateur-en-tete">Gestionnaire</div>
-        <div class="role-utilisateur-en-tete">Accès complet</div>
+        <div class="nom-utilisateur-en-tete" id="nom-utilisateur-en-tete">Gestionnaire</div>
+        <div class="role-utilisateur-en-tete" id="role-utilisateur-en-tete">Accès complet</div>
       </div>
-      <div class="avatar-en-tete" style="background:var(--ambre);">G</div>
+      <div class="avatar-en-tete" id="avatar-en-tete" style="background:var(--ambre);">G</div>
       <button class="bouton bouton-fantome bouton-petit" onclick="seDeconnecter()">Déconnexion</button>
     </div>
   </header>
@@ -215,6 +221,7 @@
       <button class="bouton-onglet" onclick="changerOnglet('zones', this)">📍 Zones</button>
       <button class="bouton-onglet" onclick="changerOnglet('carte', this)">🗺️ Carte</button>
       <button class="bouton-onglet" onclick="changerOnglet('rapports', this)">📊 Rapports</button>
+      <button class="bouton-onglet" id="bouton-onglet-comptes" onclick="changerOnglet('comptes', this)" style="display:none;">🔑 Comptes</button>
     </div>
 
     <!-- ONGLET : VUE D'ENSEMBLE -->
@@ -385,6 +392,31 @@
             <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--texte-3);">Sélectionnez une période et cliquez sur Générer</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- ONGLET : COMPTES (administrateur uniquement) -->
+    <div id="onglet-comptes" class="panneau-onglet">
+      <div class="disposition-zones">
+        <div>
+          <div class="entete-section" style="margin-bottom:14px;">
+            <div class="titre-section">Accès gestionnaire</div>
+          </div>
+          <div id="liste-comptes" class="liste-zones"></div>
+        </div>
+        <div>
+          <div class="carte carte-ajout-zone">
+            <div class="titre-ajout-zone">➕ Autoriser un accès</div>
+            <div class="grille-formulaire">
+              <div class="champ">
+                <label class="libelle-champ">Nom de la personne</label>
+                <input type="text" id="nom-compte" placeholder="ex: Marie (secrétariat)">
+              </div>
+              <button class="bouton bouton-primaire" onclick="ajouterCompte()" style="margin-top:4px;">Créer l'accès</button>
+              <span class="astuce-formulaire">La personne définira elle-même son mot de passe à sa première connexion.</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
