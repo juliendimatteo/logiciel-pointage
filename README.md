@@ -1,7 +1,8 @@
 # PointagePro
 
-Application de pointage GPS pour équipes de chantier (BTP). Interface 100% web,
-sans backend : les données sont stockées dans le `localStorage` du navigateur.
+Application de pointage GPS pour équipes de chantier (BTP). Interface web
+statique (aucun serveur applicatif), synchronisée en temps réel entre tous
+les appareils via Firebase Firestore.
 
 ## Fonctionnalités
 
@@ -9,34 +10,72 @@ sans backend : les données sont stockées dans le `localStorage` du navigateur.
 - Pointage entrée / sortie en un clic
 - Détection de la zone de chantier la plus proche via géolocalisation
 - Radar visuel indiquant la position par rapport au périmètre autorisé
+- Alerte si la position GPS ne correspond plus au statut de pointage
 - Historique des pointages du jour
 
-**Gestionnaire**
-- Vue d'ensemble : ouvriers présents / absents / hors zone
-- Gestion des zones de chantier (nom, coordonnées GPS, rayon)
+**Gestionnaire** (accès protégé par mot de passe)
+- Vue d'ensemble en temps réel : ouvriers présents / absents / hors zone,
+  mis à jour instantanément dès qu'un ouvrier pointe depuis son appareil
+- Gestion des ouvriers (ajout, suppression)
+- Gestion des zones de chantier (nom, adresse ou coordonnées GPS, rayon)
 - Rapports par période et par ouvrier, avec export CSV
+
+## Architecture
+
+Le site (`index.html`, `style.css`, `app.js`) est entièrement statique et
+peut être hébergé n'importe où (GitHub Pages actuellement). Les données
+partagées (ouvriers, zones, pointages) sont stockées dans **Firebase
+Firestore**, avec synchronisation en temps réel : tous les appareils
+connectés (gestionnaire et ouvriers) voient les mêmes données se mettre à
+jour instantanément, sans recharger la page.
+
+Le mot de passe gestionnaire et la session de connexion restent en local
+(`localStorage`), propres à chaque appareil/navigateur.
+
+### Configuration Firebase requise
+
+Dans la console Firebase du projet :
+1. **Firestore Database** activée
+2. **Authentication → Sign-in method → Anonymous** activé (l'app se connecte
+   anonymement pour respecter les règles de sécurité ci-dessous)
+3. **Règles Firestore** (onglet Rules) :
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /{document=**} {
+         allow read, write: if request.auth != null;
+       }
+     }
+   }
+   ```
+
+La configuration du projet (`firebaseConfig`) est en clair dans `app.js` —
+c'est normal pour une app web Firebase, la clé n'est pas un secret : la
+protection se fait via les règles ci-dessus, pas via sa confidentialité.
 
 ## Utilisation
 
-Aucune installation ni build requis : ouvrez `index.html` dans un navigateur,
-ou servez le dossier avec un serveur statique, par exemple :
+Aucune installation ni build requis : servez le dossier avec un serveur
+statique, par exemple :
 
 ```bash
 python3 -m http.server 8080
 ```
 
-puis rendez-vous sur `http://localhost:8080`.
+puis rendez-vous sur `http://localhost:8080`. Une connexion internet est
+nécessaire (accès à Firestore).
 
 ## Structure
 
 - `index.html` — structure des vues (connexion, ouvrier, gestionnaire)
 - `style.css` — thème visuel (clair/sombre automatique)
-- `app.js` — logique applicative, stockage local, géolocalisation
+- `app.js` — logique applicative, synchronisation Firestore, géolocalisation
+- `.github/workflows/pages.yml` — déploiement automatique sur GitHub Pages
 
 ## Notes
 
 - Le GPS du navigateur est requis pour la détection de zone ; sans autorisation,
   l'application reste utilisable en mode démo (position simulée).
-- Toutes les données (ouvriers, zones, pointages) sont pré-remplies avec un
-  jeu d'exemple au premier lancement et peuvent être réinitialisées en vidant
-  le `localStorage` du navigateur.
+- Au tout premier lancement (base Firestore vide), un jeu de données
+  d'exemple (ouvriers, zones, pointages) est créé automatiquement.

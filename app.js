@@ -47,34 +47,39 @@ function modeSombreActif() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   STOCKAGE DES DONNÉES
+   BASE DE DONNÉES PARTAGÉE (FIREBASE)
 ═══════════════════════════════════════════════════════════ */
+const firebaseConfig = {
+  apiKey: "AIzaSyBR3LsM69V3CdeTxq1VGs6WSj_bIySIVBU",
+  authDomain: "pointagepro-7616c.firebaseapp.com",
+  projectId: "pointagepro-7616c",
+  storageBucket: "pointagepro-7616c.firebasestorage.app",
+  messagingSenderId: "114668935302",
+  appId: "1:114668935302:web:f979cd071c3de5faec5907"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
 const Stockage = {
-  CLE: 'pointagepro_donnees',
   donnees: { ouvriers: [], zones: [], pointages: [] },
-  charger() {
-    try { const d = localStorage.getItem(this.CLE); if (d) this.donnees = JSON.parse(d); } catch(e) {}
-  },
-  enregistrer() {
-    try { localStorage.setItem(this.CLE, JSON.stringify(this.donnees)); } catch(e) {}
-  },
-  initialiser() {
+
+  async initialiserFirestore() {
     const maintenant = new Date();
     const t = (h,m) => { const d=new Date(maintenant); d.setHours(h,m,0,0); return d.toISOString(); };
 
-    this.donnees.ouvriers = [
+    const ouvriers = [
       { id:'o1', nom:'Jean Dupont',    metier:'Maçon' },
       { id:'o2', nom:'Marc Laurent',   metier:'Électricien' },
       { id:'o3', nom:'Sophie Renard',  metier:'Chef de chantier' },
       { id:'o4', nom:'Pierre Lecomte', metier:'Peintre' },
       { id:'o5', nom:'Nadia Bouchard', metier:'Plombier' },
     ];
-    this.donnees.zones = [
+    const zones = [
       { id:'z1', nom:'Chantier Bruxelles Centre', lat:50.8503, lng:4.3517, rayon:150 },
       { id:'z2', nom:'Dépôt Anderlecht',          lat:50.8366, lng:4.3142, rayon:200 },
     ];
     // Pointages du jour
-    this.donnees.pointages = [
+    const pointages = [
       { id:genererId(), idOuvrier:'o1', type:'entree', lat:50.8505, lng:4.3520, horodatage:t(7,35), idZone:'z1', dansZone:true },
       { id:genererId(), idOuvrier:'o2', type:'entree', lat:50.8501, lng:4.3515, horodatage:t(7,50), idZone:'z1', dansZone:true },
       { id:genererId(), idOuvrier:'o2', type:'sortie', lat:50.8503, lng:4.3518, horodatage:t(12,5),  idZone:'z1', dansZone:true },
@@ -83,9 +88,58 @@ const Stockage = {
       { id:genererId(), idOuvrier:'o4', type:'entree', lat:50.8490, lng:4.3600, horodatage:t(9,0),  idZone:null,  dansZone:false },
       { id:genererId(), idOuvrier:'o4', type:'sortie', lat:50.8490, lng:4.3600, horodatage:t(11,30),idZone:null,  dansZone:false },
     ];
-    this.enregistrer();
+
+    const batch = db.batch();
+    ouvriers.forEach(({id, ...data}) => batch.set(db.collection('ouvriers').doc(id), data));
+    zones.forEach(({id, ...data}) => batch.set(db.collection('zones').doc(id), data));
+    pointages.forEach(({id, ...data}) => batch.set(db.collection('pointages').doc(id), data));
+    await batch.commit();
   }
 };
+
+let premiereSyncOuvriers = true;
+
+async function verifierEtInitialiserDonnees() {
+  if (Stockage.donnees.ouvriers.length > 0) return;
+  const snap = await db.collection('ouvriers').limit(1).get();
+  if (!snap.empty) return;
+  await Stockage.initialiserFirestore();
+}
+
+function demarrerSynchronisation() {
+  db.collection('ouvriers').onSnapshot(snap => {
+    Stockage.donnees.ouvriers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (premiereSyncOuvriers) { premiereSyncOuvriers = false; verifierEtInitialiserDonnees(); }
+    rafraichirSelonContexte();
+  }, err => { console.error('Erreur de synchronisation (ouvriers) :', err); afficherNotification('Synchronisation impossible (ouvriers)', 'erreur'); });
+
+  db.collection('zones').onSnapshot(snap => {
+    Stockage.donnees.zones = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    rafraichirSelonContexte();
+  }, err => { console.error('Erreur de synchronisation (zones) :', err); afficherNotification('Synchronisation impossible (zones)', 'erreur'); });
+
+  db.collection('pointages').onSnapshot(snap => {
+    Stockage.donnees.pointages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    rafraichirSelonContexte();
+  }, err => { console.error('Erreur de synchronisation (pointages) :', err); afficherNotification('Synchronisation impossible (pointages)', 'erreur'); });
+}
+
+function rafraichirSelonContexte() {
+  if (!utilisateurActuel) {
+    if (roleSelectionne === 'ouvrier') peuplerListeOuvriersConnexion();
+    return;
+  }
+  if (utilisateurActuel.role === 'gestionnaire') {
+    actualiserGestionnaire();
+    afficherOuvriersGestion();
+    afficherZones();
+    remplirOuvriersRapport();
+  } else if (utilisateurActuel.role === 'ouvrier') {
+    mettreAJourStatutOuvrier();
+    afficherHistoriqueOuvrier();
+    if (GPS.position) mettreAJourAffichageGPS(GPS.position);
+  }
+}
 
 /* ═══════════════════════════════════════════════════════════
    GPS
@@ -180,20 +234,27 @@ function selectionnerRole(role) {
 
   if (role === 'ouvrier') {
     $('section-selection-ouvrier').style.display = 'block';
-    const sel = $('selection-ouvrier');
-    sel.innerHTML = '<option value="">-- Choisir votre nom --</option>';
-    Stockage.donnees.ouvriers.forEach(o => {
-      const opt = document.createElement('option');
-      opt.value = o.id; opt.textContent = `${o.nom} — ${o.metier}`;
-      sel.appendChild(opt);
-    });
-    sel.onchange = () => mettreAJourBoutonConnexion();
+    peuplerListeOuvriersConnexion();
+    $('selection-ouvrier').onchange = () => mettreAJourBoutonConnexion();
   } else if (role === 'gestionnaire') {
     $('section-mdp-gestionnaire').style.display = 'block';
     const mdpExiste = !!localStorage.getItem(CLE_MDP_GESTIONNAIRE);
     $('libelle-mdp-gestionnaire').textContent = mdpExiste ? 'Mot de passe' : 'Créer un mot de passe gestionnaire';
     $('lien-mdp-oublie').style.display = mdpExiste ? 'block' : 'none';
   }
+  mettreAJourBoutonConnexion();
+}
+
+function peuplerListeOuvriersConnexion() {
+  const sel = $('selection-ouvrier');
+  const valeurActuelle = sel.value;
+  sel.innerHTML = '<option value="">-- Choisir votre nom --</option>';
+  Stockage.donnees.ouvriers.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.id; opt.textContent = `${o.nom} — ${o.metier}`;
+    sel.appendChild(opt);
+  });
+  if ([...sel.options].some(o => o.value === valeurActuelle)) sel.value = valeurActuelle;
   mettreAJourBoutonConnexion();
 }
 
@@ -391,7 +452,7 @@ function mettreAJourAffichageGPS(pos) {
   }
 }
 
-function pointer() {
+async function pointer() {
   if (!GPS.position) {
     // Mode démo : permet de pointer sans GPS
     const pos = { lat: 50.8503 + (Math.random()-.5)*0.002, lng: 4.3517 + (Math.random()-.5)*0.002, precision: 15 };
@@ -399,31 +460,26 @@ function pointer() {
     mettreAJourAffichageGPS(pos);
   }
   const pos = GPS.position;
-  const aujourdhui = dateAujourdhui();
-  const pointages = Stockage.donnees.pointages.filter(p=>p.idOuvrier===utilisateurActuel.id && p.horodatage.startsWith(aujourdhui));
-  pointages.sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
-  const dernier = pointages[pointages.length-1];
+  const dernier = dernierPointageDuJour(utilisateurActuel.id);
   const type = (!dernier || dernier.type==='sortie') ? 'entree' : 'sortie';
 
   const resultat = GPS.zoneLaPlusProche(pos.lat, pos.lng);
   const pointage = {
-    id: genererId(),
     idOuvrier: utilisateurActuel.id,
     type, lat: pos.lat, lng: pos.lng,
     horodatage: new Date().toISOString(),
     idZone: resultat?.zone?.id || null,
     dansZone: resultat?.dansZone || false
   };
-  Stockage.donnees.pointages.push(pointage);
-  Stockage.enregistrer();
 
-  const libelle = type==='entree' ? 'Entrée pointée' : 'Sortie pointée';
-  const alerte = !pointage.dansZone && Stockage.donnees.zones.length > 0 ? ' (hors zone)' : '';
-  afficherNotification(`${libelle} à ${formaterHeureCourte(new Date())}${alerte}`, pointage.dansZone||!Stockage.donnees.zones.length?'succes':'alerte');
-
-  mettreAJourStatutOuvrier();
-  afficherHistoriqueOuvrier();
-  verifierCoherencePointage(resultat ? resultat.dansZone : null);
+  try {
+    await db.collection('pointages').doc(genererId()).set(pointage);
+    const libelle = type==='entree' ? 'Entrée pointée' : 'Sortie pointée';
+    const alerte = !pointage.dansZone && Stockage.donnees.zones.length > 0 ? ' (hors zone)' : '';
+    afficherNotification(`${libelle} à ${formaterHeureCourte(new Date())}${alerte}`, pointage.dansZone||!Stockage.donnees.zones.length?'succes':'alerte');
+  } catch (e) {
+    afficherNotification('Erreur lors du pointage : ' + e.message, 'erreur');
+  }
 }
 
 function afficherHistoriqueOuvrier() {
@@ -662,30 +718,31 @@ function afficherOuvriersGestion() {
     </div>`).join('');
 }
 
-function ajouterOuvrier() {
+async function ajouterOuvrier() {
   const nom = $('nom-ouvrier').value.trim();
   const metier = $('metier-ouvrier').value.trim();
   if (!nom || !metier) {
     afficherNotification('Veuillez renseigner le nom et le métier', 'erreur');
     return;
   }
-  Stockage.donnees.ouvriers.push({ id: genererId(), nom, metier });
-  Stockage.enregistrer();
-  $('nom-ouvrier').value=''; $('metier-ouvrier').value='';
-  afficherOuvriersGestion();
-  remplirOuvriersRapport();
-  afficherNotification(`Ouvrier « ${nom} » ajouté`, 'succes');
+  try {
+    await db.collection('ouvriers').doc(genererId()).set({ nom, metier });
+    $('nom-ouvrier').value=''; $('metier-ouvrier').value='';
+    afficherNotification(`Ouvrier « ${nom} » ajouté`, 'succes');
+  } catch (e) {
+    afficherNotification("Erreur lors de l'ajout : " + e.message, 'erreur');
+  }
 }
 
 function supprimerOuvrier(id) {
   const o = Stockage.donnees.ouvriers.find(x=>x.id===id);
-  ouvrirDialogue('Supprimer l\'ouvrier', `Supprimer « ${o?.nom} » ? Son historique de pointages sera conservé.`, () => {
-    Stockage.donnees.ouvriers = Stockage.donnees.ouvriers.filter(x=>x.id!==id);
-    Stockage.enregistrer();
-    afficherOuvriersGestion();
-    remplirOuvriersRapport();
-    actualiserGestionnaire();
-    afficherNotification('Ouvrier supprimé', 'info');
+  ouvrirDialogue('Supprimer l\'ouvrier', `Supprimer « ${o?.nom} » ? Son historique de pointages sera conservé.`, async () => {
+    try {
+      await db.collection('ouvriers').doc(id).delete();
+      afficherNotification('Ouvrier supprimé', 'info');
+    } catch (e) {
+      afficherNotification('Erreur lors de la suppression : ' + e.message, 'erreur');
+    }
   });
 }
 
@@ -756,7 +813,7 @@ function reinitialiserFormulaireZone() {
   $('bouton-annuler-modif-zone').style.display = 'none';
 }
 
-function enregistrerZone() {
+async function enregistrerZone() {
   const nom = $('nom-zone').value.trim();
   const lat = parseFloat($('lat-zone').value);
   const lng = parseFloat($('lng-zone').value);
@@ -769,30 +826,31 @@ function enregistrerZone() {
     afficherNotification('Coordonnées GPS invalides', 'erreur');
     return;
   }
-  if (zoneEnEdition) {
-    const z = Stockage.donnees.zones.find(x=>x.id===zoneEnEdition);
-    if (z) { z.nom = nom; z.lat = lat; z.lng = lng; z.rayon = rayon; }
-    Stockage.enregistrer();
-    reinitialiserFormulaireZone();
-    afficherZones();
-    afficherNotification(`Zone « ${nom} » modifiée`, 'succes');
-  } else {
-    Stockage.donnees.zones.push({ id:genererId(), nom, lat, lng, rayon });
-    Stockage.enregistrer();
-    reinitialiserFormulaireZone();
-    afficherZones();
-    afficherNotification(`Zone « ${nom} » ajoutée`, 'succes');
+  try {
+    if (zoneEnEdition) {
+      await db.collection('zones').doc(zoneEnEdition).update({ nom, lat, lng, rayon });
+      reinitialiserFormulaireZone();
+      afficherNotification(`Zone « ${nom} » modifiée`, 'succes');
+    } else {
+      await db.collection('zones').doc(genererId()).set({ nom, lat, lng, rayon });
+      reinitialiserFormulaireZone();
+      afficherNotification(`Zone « ${nom} » ajoutée`, 'succes');
+    }
+  } catch (e) {
+    afficherNotification('Erreur : ' + e.message, 'erreur');
   }
 }
 
 function supprimerZone(id) {
   const z = Stockage.donnees.zones.find(x=>x.id===id);
-  ouvrirDialogue('Supprimer la zone', `Supprimer « ${z?.nom} » ? Les pointages existants ne seront pas affectés.`, () => {
-    Stockage.donnees.zones = Stockage.donnees.zones.filter(x=>x.id!==id);
-    Stockage.enregistrer();
-    if (zoneEnEdition === id) reinitialiserFormulaireZone();
-    afficherZones();
-    afficherNotification('Zone supprimée', 'info');
+  ouvrirDialogue('Supprimer la zone', `Supprimer « ${z?.nom} » ? Les pointages existants ne seront pas affectés.`, async () => {
+    try {
+      await db.collection('zones').doc(id).delete();
+      if (zoneEnEdition === id) reinitialiserFormulaireZone();
+      afficherNotification('Zone supprimée', 'info');
+    } catch (e) {
+      afficherNotification('Erreur : ' + e.message, 'erreur');
+    }
   });
 }
 
@@ -947,9 +1005,11 @@ function exporterCSV() {
 /* ═══════════════════════════════════════════════════════════
    INITIALISATION
 ═══════════════════════════════════════════════════════════ */
-const donneesDejaExistantes = localStorage.getItem(Stockage.CLE) !== null;
-Stockage.charger();
-if (!donneesDejaExistantes) Stockage.initialiser();
+firebase.auth().onAuthStateChanged(u => { if (u) demarrerSynchronisation(); });
+firebase.auth().signInAnonymously().catch(err => {
+  console.error('Authentification anonyme impossible :', err);
+  afficherNotification('Connexion au serveur impossible — vérifiez votre connexion internet', 'erreur');
+});
 
 const session = chargerSession();
 if (session) {
