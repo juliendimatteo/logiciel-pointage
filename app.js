@@ -300,10 +300,12 @@ function notifierSortieSansPointage() {
    ou un déplacement légitime hors zone.
 ═══════════════════════════════════════════════════════════ */
 let minuteurAutoDepointage = null;
+let momentSortieZoneDetectee = null; // horodatage réel du début de la sortie de zone, pas celui du déclenchement du minuteur
 const DELAI_AUTO_DEPOINTAGE_MS = 60 * 60 * 1000; // 1 heure hors zone en continu
 
 function annulerMinuteurAutoDepointage() {
   if (minuteurAutoDepointage !== null) { clearTimeout(minuteurAutoDepointage); minuteurAutoDepointage = null; }
+  momentSortieZoneDetectee = null;
 }
 
 async function effectuerAutoDepointage() {
@@ -311,12 +313,13 @@ async function effectuerAutoDepointage() {
   const dernier = dernierPointageDuJour(utilisateurActuel.id);
   if (!dernier || dernier.type !== 'entree') return; // déjà régularisé entre-temps
   const pos = GPS.position;
+  const horodatage = momentSortieZoneDetectee || new Date().toISOString();
   try {
     await db.collection('pointages').doc(genererId()).set({
       idOuvrier: utilisateurActuel.id,
       type: 'sortie',
       lat: pos?.lat ?? null, lng: pos?.lng ?? null,
-      horodatage: new Date().toISOString(),
+      horodatage,
       idZone: null, dansZone: false, automatique: true
     });
     envoyerNotificationLocale(
@@ -680,6 +683,7 @@ function verifierCoherencePointage(dansZone) {
     // restriction horaire ici : ce délai dépasse déjà largement une pause
     // légitime, donc pas besoin d'attendre 15h15 comme pour le rappel.
     if (minuteurAutoDepointage === null) {
+      momentSortieZoneDetectee = new Date().toISOString();
       minuteurAutoDepointage = setTimeout(() => {
         minuteurAutoDepointage = null;
         effectuerAutoDepointage();
