@@ -239,6 +239,44 @@ function afficherNotification(msg, type='info') {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   NOTIFICATION PUSH LOCALE (sortie de chantier sans pointage)
+   Déclenchée directement sur l'appareil, sans passer par un serveur,
+   dès que la géolocalisation détecte une sortie de zone incohérente
+   avec le statut de pointage — fonctionne même si l'onglet est en
+   arrière-plan tant que le navigateur reste actif.
+═══════════════════════════════════════════════════════════ */
+let alerteSortieNotifiee = false;
+
+function notificationsDisponibles() {
+  return 'Notification' in window;
+}
+
+function demanderPermissionNotifications() {
+  if (!notificationsDisponibles() || Notification.permission !== 'default') return;
+  Notification.requestPermission().catch(()=>{});
+}
+
+async function notifierSortieSansPointage() {
+  if (!notificationsDisponibles() || Notification.permission !== 'granted') return;
+  const titre = 'Sortie du chantier non pointée';
+  const options = {
+    body: "Vous quittez le chantier sans avoir pointé votre départ — n'oubliez pas !",
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    tag: 'sortie-sans-pointage',
+    vibrate: [200, 100, 200]
+  };
+  try {
+    if ('serviceWorker' in navigator) {
+      const inscription = await navigator.serviceWorker.ready;
+      await inscription.showNotification(titre, options);
+    } else {
+      new Notification(titre, options);
+    }
+  } catch (e) { console.warn('Notification impossible :', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════
    BOÎTE DE DIALOGUE
 ═══════════════════════════════════════════════════════════ */
 let rappelDialogue = null;
@@ -408,6 +446,7 @@ function seDeconnecter() {
     db.collection('positions').doc(utilisateurActuel.id).delete().catch(()=>{});
   }
   GPS.arreter(); effacerSession(); utilisateurActuel = null;
+  alerteSortieNotifiee = false;
   clearInterval(intervalleHorloge);
   afficherVue('connexion');
   roleSelectionne = null;
@@ -451,6 +490,7 @@ function afficherVueOuvrier() {
 
   mettreAJourStatutOuvrier();
   afficherHistoriqueOuvrier();
+  demanderPermissionNotifications();
 
   // GPS
   GPS.surMiseAJour = pos => mettreAJourAffichageGPS(pos);
@@ -562,11 +602,17 @@ function verifierCoherencePointage(dansZone) {
   if (dansZone && !estPresent) {
     $('texte-alerte-pointage').textContent = "Vous êtes dans la zone du chantier mais vous n'avez pas pointé votre entrée.";
     el.style.display = 'block';
+    alerteSortieNotifiee = false;
   } else if (!dansZone && estPresent) {
     $('texte-alerte-pointage').textContent = 'Vous avez quitté la zone du chantier sans pointer votre sortie.';
     el.style.display = 'block';
+    if (!alerteSortieNotifiee) {
+      alerteSortieNotifiee = true;
+      notifierSortieSansPointage();
+    }
   } else {
     el.style.display = 'none';
+    alerteSortieNotifiee = false;
   }
 }
 
@@ -643,6 +689,7 @@ async function pointer() {
 
   try {
     await db.collection('pointages').doc(genererId()).set(pointage);
+    if (type === 'sortie') alerteSortieNotifiee = false;
     const libelle = type==='entree' ? 'Entrée pointée' : 'Sortie pointée';
     const alerte = !pointage.dansZone && Stockage.donnees.zones.length > 0 ? ' (hors zone)' : '';
     afficherNotification(`${libelle} à ${formaterHeureCourte(new Date())}${alerte}`, pointage.dansZone||!Stockage.donnees.zones.length?'succes':'alerte');
