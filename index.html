@@ -36,6 +36,22 @@
   </div>
 </div>
 
+<!-- ─── BOÎTE DE DIALOGUE DE MODIFICATION D'UN POINTAGE ─── -->
+<div id="dialogue-pointage" class="fond-dialogue">
+  <div class="boite-dialogue">
+    <div class="titre-dialogue">✏️ Modifier le pointage</div>
+    <div style="font-size:13px;color:var(--texte-2);margin-bottom:16px;" id="contexte-modif-pointage"></div>
+    <div class="champ" style="margin-bottom:20px;">
+      <label class="libelle-champ">Date et heure</label>
+      <input type="datetime-local" id="horodatage-modif-pointage">
+    </div>
+    <div class="actions-dialogue">
+      <button class="bouton bouton-fantome bouton-petit" onclick="fermerModifPointage()">Annuler</button>
+      <button class="bouton bouton-primaire bouton-petit" onclick="enregistrerModifPointage()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════════════════════════════════════
      VUE CONNEXION
 ═══════════════════════════════════════════ -->
@@ -415,10 +431,11 @@
               <th>Zone</th>
               <th>Durée session</th>
               <th>Statut</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="corps-rapport">
-            <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--texte-3);">Sélectionnez une période et cliquez sur Générer</td></tr>
+            <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--texte-3);">Sélectionnez une période et cliquez sur Générer</td></tr>
           </tbody>
         </table>
       </div>
