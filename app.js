@@ -269,16 +269,9 @@ function demanderPermissionNotifications() {
   Notification.requestPermission().catch(()=>{});
 }
 
-async function notifierSortieSansPointage() {
+async function envoyerNotificationLocale(titre, corps, tag) {
   if (!notificationsDisponibles() || Notification.permission !== 'granted') return;
-  const titre = 'Sortie du chantier non pointée';
-  const options = {
-    body: "Vous quittez le chantier sans avoir pointé votre départ — n'oubliez pas !",
-    icon: 'icons/icon-192.png',
-    badge: 'icons/icon-192.png',
-    tag: 'sortie-sans-pointage',
-    vibrate: [200, 100, 200]
-  };
+  const options = { body: corps, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag, vibrate: [200, 100, 200] };
   try {
     if ('serviceWorker' in navigator) {
       const inscription = await navigator.serviceWorker.ready;
@@ -287,6 +280,53 @@ async function notifierSortieSansPointage() {
       new Notification(titre, options);
     }
   } catch (e) { console.warn('Notification impossible :', e); }
+}
+
+function notifierSortieSansPointage() {
+  return envoyerNotificationLocale(
+    'Sortie du chantier non pointée',
+    "Vous quittez le chantier sans avoir pointé votre départ — n'oubliez pas !",
+    'sortie-sans-pointage'
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUTO-DÉPOINTAGE (sortie de zone prolongée sans pointage)
+   Filet de sécurité après le rappel : si l'ouvrier reste hors zone en
+   continu, sans avoir pointé sa sortie, pendant DELAI_AUTO_DEPOINTAGE_MS,
+   l'app enregistre elle-même une sortie (marquée « automatique » pour
+   rester distinguable et corrigeable). Le délai est volontairement bien
+   plus long que celui du simple rappel, pour ne jamais couvrir une pause
+   ou un déplacement légitime hors zone.
+═══════════════════════════════════════════════════════════ */
+let minuteurAutoDepointage = null;
+const DELAI_AUTO_DEPOINTAGE_MS = 60 * 60 * 1000; // 1 heure hors zone en continu
+
+function annulerMinuteurAutoDepointage() {
+  if (minuteurAutoDepointage !== null) { clearTimeout(minuteurAutoDepointage); minuteurAutoDepointage = null; }
+}
+
+async function effectuerAutoDepointage() {
+  if (!utilisateurActuel || utilisateurActuel.role !== 'ouvrier') return;
+  const dernier = dernierPointageDuJour(utilisateurActuel.id);
+  if (!dernier || dernier.type !== 'entree') return; // déjà régularisé entre-temps
+  const pos = GPS.position;
+  try {
+    await db.collection('pointages').doc(genererId()).set({
+      idOuvrier: utilisateurActuel.id,
+      type: 'sortie',
+      lat: pos?.lat ?? null, lng: pos?.lng ?? null,
+      horodatage: new Date().toISOString(),
+      idZone: null, dansZone: false, automatique: true
+    });
+    envoyerNotificationLocale(
+      'Sortie enregistrée automatiquement',
+      "Vous étiez hors chantier depuis plus d'une heure sans avoir pointé — votre sortie a été enregistrée automatiquement. Corrigez-la si c'est une erreur.",
+      'auto-depointage'
+    );
+  } catch (e) {
+    console.error('Erreur auto-dépointage :', e);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -461,6 +501,7 @@ function seDeconnecter() {
   GPS.arreter(); effacerSession(); utilisateurActuel = null;
   alerteSortieNotifiee = false;
   annulerMinuteurNotifSortie();
+  annulerMinuteurAutoDepointage();
   clearInterval(intervalleHorloge);
   afficherVue('connexion');
   roleSelectionne = null;
@@ -618,6 +659,7 @@ function verifierCoherencePointage(dansZone) {
     el.style.display = 'block';
     alerteSortieNotifiee = false;
     annulerMinuteurNotifSortie();
+    annulerMinuteurAutoDepointage();
   } else if (!dansZone && estPresent) {
     $('texte-alerte-pointage').textContent = 'Vous avez quitté la zone du chantier sans pointer votre sortie.';
     el.style.display = 'block';
@@ -633,10 +675,21 @@ function verifierCoherencePointage(dansZone) {
         notifierSortieSansPointage();
       }, DELAI_NOTIF_SORTIE_MS);
     }
+    // Filet de sécurité : sortie de zone confirmée sur DELAI_AUTO_DEPOINTAGE_MS
+    // (1h, bien plus long que le rappel) -> dépointage automatique. Pas de
+    // restriction horaire ici : ce délai dépasse déjà largement une pause
+    // légitime, donc pas besoin d'attendre 15h15 comme pour le rappel.
+    if (minuteurAutoDepointage === null) {
+      minuteurAutoDepointage = setTimeout(() => {
+        minuteurAutoDepointage = null;
+        effectuerAutoDepointage();
+      }, DELAI_AUTO_DEPOINTAGE_MS);
+    }
   } else {
     el.style.display = 'none';
     alerteSortieNotifiee = false;
     annulerMinuteurNotifSortie();
+    annulerMinuteurAutoDepointage();
   }
 }
 
@@ -713,7 +766,7 @@ async function pointer() {
 
   try {
     await db.collection('pointages').doc(genererId()).set(pointage);
-    if (type === 'sortie') { alerteSortieNotifiee = false; annulerMinuteurNotifSortie(); }
+    if (type === 'sortie') { alerteSortieNotifiee = false; annulerMinuteurNotifSortie(); annulerMinuteurAutoDepointage(); }
     const libelle = type==='entree' ? 'Entrée pointée' : 'Sortie pointée';
     const alerte = !pointage.dansZone && Stockage.donnees.zones.length > 0 ? ' (hors zone)' : '';
     afficherNotification(`${libelle} à ${formaterHeureCourte(new Date())}${alerte}`, pointage.dansZone||!Stockage.donnees.zones.length?'succes':'alerte');
@@ -742,7 +795,7 @@ function afficherHistoriqueOuvrier() {
       </div>
       <div class="info-historique">
         <div class="type-historique" style="color:${estEntree?'var(--vert)':'var(--rouge)'};">${estEntree?'Entrée':'Sortie'}</div>
-        <div class="meta-historique">${p.forcee ? 'Sortie forcée par le gestionnaire' : (zone?zone.nom:'Hors zone')}${!p.forcee&&!p.dansZone&&Stockage.donnees.zones.length?' · ⚠️ Hors périmètre':''}</div>
+        <div class="meta-historique">${p.forcee ? 'Sortie forcée par le gestionnaire' : p.automatique ? 'Sortie automatique (1h hors zone)' : (zone?zone.nom:'Hors zone')}${!p.forcee&&!p.automatique&&!p.dansZone&&Stockage.donnees.zones.length?' · ⚠️ Hors périmètre':''}</div>
       </div>
       <div class="heure-historique">${formaterHeureCourte(new Date(p.horodatage))}</div>
     </div>`;
@@ -1424,7 +1477,7 @@ function genererRapport() {
   corps.innerHTML = donneesRapport.map(r => {
     const p = r.pointage;
     const estEntree = p.type === 'entree';
-    const horsZone = !p.forcee && !p.dansZone && Stockage.donnees.zones.length > 0;
+    const horsZone = !p.forcee && !p.automatique && !p.dansZone && Stockage.donnees.zones.length > 0;
     return `
     <tr>
       <td><div style="display:flex;align-items:center;gap:8px;">
@@ -1438,9 +1491,11 @@ function genererRapport() {
       <td>${r.duree!=null?`<span style="font-weight:600;">${formaterDuree(r.duree)}</span>`:'<span style="color:var(--texte-3);">—</span>'}</td>
       <td>${p.forcee
         ? '<span class="badge badge-bleu">Sortie forcée</span>'
-        : horsZone
-          ? '<span class="badge badge-ambre">⚠️ Hors zone</span>'
-          : '<span class="badge badge-vert">✓ OK</span>'}</td>
+        : p.automatique
+          ? '<span class="badge badge-bleu">Sortie automatique</span>'
+          : horsZone
+            ? '<span class="badge badge-ambre">⚠️ Hors zone</span>'
+            : '<span class="badge badge-vert">✓ OK</span>'}</td>
     </tr>`;
   }).join('');
   $('bouton-export').style.display='';
@@ -1527,8 +1582,8 @@ async function exporterExcel() {
   donneesRapport.forEach(r => {
     const p = r.pointage;
     const estEntree = p.type === 'entree';
-    const horsZone = !p.forcee && !p.dansZone && Stockage.donnees.zones.length > 0;
-    const statut = p.forcee ? 'Sortie forcée' : (horsZone ? 'Hors zone' : 'OK');
+    const horsZone = !p.forcee && !p.automatique && !p.dansZone && Stockage.donnees.zones.length > 0;
+    const statut = p.forcee ? 'Sortie forcée' : p.automatique ? 'Sortie automatique' : (horsZone ? 'Hors zone' : 'OK');
     const ligne = feuille.addRow({
       ouvrier: r.ouvrier.nom,
       metier: r.ouvrier.metier || '',
