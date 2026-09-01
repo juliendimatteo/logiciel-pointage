@@ -248,9 +248,16 @@ function afficherNotification(msg, type='info') {
 let alerteSortieNotifiee = false;
 let minuteurNotifSortie = null;
 const DELAI_NOTIF_SORTIE_MS = 10 * 60 * 1000; // délai de grâce avant notification (évite les faux positifs GPS)
+const HEURE_ACTIVATION_NOTIF_SORTIE = { heures: 15, minutes: 15 }; // avant cette heure, pas de notification (pause de midi)
 
 function annulerMinuteurNotifSortie() {
   if (minuteurNotifSortie !== null) { clearTimeout(minuteurNotifSortie); minuteurNotifSortie = null; }
+}
+
+function notifSortieActivee() {
+  const maintenant = new Date();
+  const { heures, minutes } = HEURE_ACTIVATION_NOTIF_SORTIE;
+  return maintenant.getHours() > heures || (maintenant.getHours() === heures && maintenant.getMinutes() >= minutes);
 }
 
 function notificationsDisponibles() {
@@ -616,8 +623,10 @@ function verifierCoherencePointage(dansZone) {
     el.style.display = 'block';
     // Délai de grâce : on ne notifie que si la sortie de zone se confirme
     // pendant DELAI_NOTIF_SORTIE_MS, pour éviter les faux positifs dus à
-    // une dérive GPS ponctuelle (bâtiment, sous-sol, etc.).
-    if (!alerteSortieNotifiee && minuteurNotifSortie === null) {
+    // une dérive GPS ponctuelle (bâtiment, sous-sol, etc.). Et seulement à
+    // partir de HEURE_ACTIVATION_NOTIF_SORTIE, pour ne pas alerter pendant
+    // la pause de midi (sortie hors zone habituelle et sans conséquence).
+    if (!alerteSortieNotifiee && minuteurNotifSortie === null && notifSortieActivee()) {
       minuteurNotifSortie = setTimeout(() => {
         minuteurNotifSortie = null;
         alerteSortieNotifiee = true;
