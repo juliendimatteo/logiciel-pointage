@@ -1473,7 +1473,7 @@ function genererRapport() {
 
   const corps = $('corps-rapport');
   if (!donneesRapport.length) {
-    corps.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--texte-3);">Aucun pointage pour cette période</td></tr>';
+    corps.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--texte-3);">Aucun pointage pour cette période</td></tr>';
     $('bouton-export').style.display='none';
     return;
   }
@@ -1500,10 +1500,71 @@ function genererRapport() {
           : horsZone
             ? '<span class="badge badge-ambre">⚠️ Hors zone</span>'
             : '<span class="badge badge-vert">✓ OK</span>'}</td>
+      <td><div style="display:flex;gap:4px;">
+        <button class="bouton bouton-fantome bouton-petit" title="Modifier l'heure" onclick="ouvrirModifPointage('${p.id}')">✏️</button>
+        <button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);" title="Supprimer" onclick="supprimerPointage('${p.id}')">🗑️</button>
+      </div></td>
     </tr>`;
   }).join('');
   $('bouton-export').style.display='';
   afficherNotification(`${donneesRapport.length} pointage(s) trouvé(s)`, 'succes');
+}
+
+function versDatetimeLocal(iso) {
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+let pointageEnEdition = null;
+
+function ouvrirModifPointage(id) {
+  const p = Stockage.donnees.pointages.find(x => x.id === id);
+  if (!p) return;
+  const o = Stockage.donnees.ouvriers.find(x => x.id === p.idOuvrier);
+  pointageEnEdition = id;
+  $('contexte-modif-pointage').textContent = `${p.type === 'entree' ? 'Entrée' : 'Sortie'} de ${o ? o.nom : 'ouvrier supprimé'}`;
+  $('horodatage-modif-pointage').value = versDatetimeLocal(p.horodatage);
+  $('dialogue-pointage').classList.add('ouvert');
+}
+
+function fermerModifPointage() {
+  $('dialogue-pointage').classList.remove('ouvert');
+  pointageEnEdition = null;
+}
+$('dialogue-pointage').addEventListener('click', e => { if (e.target === $('dialogue-pointage')) fermerModifPointage(); });
+
+async function enregistrerModifPointage() {
+  if (!pointageEnEdition) return;
+  const valeur = $('horodatage-modif-pointage').value;
+  if (!valeur) { afficherNotification('Indiquez une date et une heure', 'erreur'); return; }
+  try {
+    await db.collection('pointages').doc(pointageEnEdition).update({ horodatage: new Date(valeur).toISOString() });
+    afficherNotification('Pointage modifié', 'succes');
+    fermerModifPointage();
+    genererRapport();
+  } catch (e) {
+    afficherNotification('Erreur : ' + e.message, 'erreur');
+  }
+}
+
+function supprimerPointage(id) {
+  const p = Stockage.donnees.pointages.find(x => x.id === id);
+  if (!p) return;
+  const o = Stockage.donnees.ouvriers.find(x => x.id === p.idOuvrier);
+  ouvrirDialogue(
+    'Supprimer ce pointage',
+    `Supprimer définitivement ${p.type === 'entree' ? "l'entrée" : 'la sortie'} de ${o ? o.nom : 'cet ouvrier'} du ${formaterDateCourte(new Date(p.horodatage))} à ${formaterHeureCourte(new Date(p.horodatage))} ? Cette action est irréversible.`,
+    async () => {
+      try {
+        await db.collection('pointages').doc(id).delete();
+        afficherNotification('Pointage supprimé', 'info');
+        genererRapport();
+      } catch (e) {
+        afficherNotification('Erreur : ' + e.message, 'erreur');
+      }
+    }
+  );
 }
 
 function preparerFeuilleRapport(classeur, nom, titreTexte, colonnes, derniereColonneLettre) {
