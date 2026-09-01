@@ -246,6 +246,12 @@ function afficherNotification(msg, type='info') {
    arrière-plan tant que le navigateur reste actif.
 ═══════════════════════════════════════════════════════════ */
 let alerteSortieNotifiee = false;
+let minuteurNotifSortie = null;
+const DELAI_NOTIF_SORTIE_MS = 10 * 60 * 1000; // délai de grâce avant notification (évite les faux positifs GPS)
+
+function annulerMinuteurNotifSortie() {
+  if (minuteurNotifSortie !== null) { clearTimeout(minuteurNotifSortie); minuteurNotifSortie = null; }
+}
 
 function notificationsDisponibles() {
   return 'Notification' in window;
@@ -447,6 +453,7 @@ function seDeconnecter() {
   }
   GPS.arreter(); effacerSession(); utilisateurActuel = null;
   alerteSortieNotifiee = false;
+  annulerMinuteurNotifSortie();
   clearInterval(intervalleHorloge);
   afficherVue('connexion');
   roleSelectionne = null;
@@ -603,16 +610,24 @@ function verifierCoherencePointage(dansZone) {
     $('texte-alerte-pointage').textContent = "Vous êtes dans la zone du chantier mais vous n'avez pas pointé votre entrée.";
     el.style.display = 'block';
     alerteSortieNotifiee = false;
+    annulerMinuteurNotifSortie();
   } else if (!dansZone && estPresent) {
     $('texte-alerte-pointage').textContent = 'Vous avez quitté la zone du chantier sans pointer votre sortie.';
     el.style.display = 'block';
-    if (!alerteSortieNotifiee) {
-      alerteSortieNotifiee = true;
-      notifierSortieSansPointage();
+    // Délai de grâce : on ne notifie que si la sortie de zone se confirme
+    // pendant DELAI_NOTIF_SORTIE_MS, pour éviter les faux positifs dus à
+    // une dérive GPS ponctuelle (bâtiment, sous-sol, etc.).
+    if (!alerteSortieNotifiee && minuteurNotifSortie === null) {
+      minuteurNotifSortie = setTimeout(() => {
+        minuteurNotifSortie = null;
+        alerteSortieNotifiee = true;
+        notifierSortieSansPointage();
+      }, DELAI_NOTIF_SORTIE_MS);
     }
   } else {
     el.style.display = 'none';
     alerteSortieNotifiee = false;
+    annulerMinuteurNotifSortie();
   }
 }
 
@@ -689,7 +704,7 @@ async function pointer() {
 
   try {
     await db.collection('pointages').doc(genererId()).set(pointage);
-    if (type === 'sortie') alerteSortieNotifiee = false;
+    if (type === 'sortie') { alerteSortieNotifiee = false; annulerMinuteurNotifSortie(); }
     const libelle = type==='entree' ? 'Entrée pointée' : 'Sortie pointée';
     const alerte = !pointage.dansZone && Stockage.donnees.zones.length > 0 ? ' (hors zone)' : '';
     afficherNotification(`${libelle} à ${formaterHeureCourte(new Date())}${alerte}`, pointage.dansZone||!Stockage.donnees.zones.length?'succes':'alerte');
