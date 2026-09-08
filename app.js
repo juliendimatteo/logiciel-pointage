@@ -149,6 +149,8 @@ function demarrerSynchronisation() {
     syncComptesPrete = true;
     rafraichirSelonContexte();
   }, err => { console.error('Erreur de synchronisation (comptes) :', err); });
+
+  demarrerSurveillancePassive();
 }
 
 function rafraichirSelonContexte() {
@@ -330,6 +332,61 @@ async function effectuerAutoDepointage() {
   } catch (e) {
     console.error('Erreur auto-dépointage :', e);
   }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUTO-DÉPOINTAGE PAR SURVEILLANCE PASSIVE
+   Le minuteur ci-dessus ne fonctionne que si l'onglet de l'OUVRIER
+   concerné reste actif en continu pendant 1h — or un téléphone mis en
+   veille ou dont l'app passe en arrière-plan voit ses minuteurs
+   suspendus par l'OS, donc ce cas très courant ne se déclenche jamais.
+   Ce filet de secours tourne dans N'IMPORTE QUELLE session ouverte
+   (ouvrier ou gestionnaire, y compris avant connexion) : toutes les
+   INTERVALLE_VERIFICATION_RETARD_MS, on compare la dernière position
+   connue de chaque ouvrier « présent » (déjà envoyée toutes les ~20s
+   pendant qu'il utilisait l'app) à maintenant. Si elle date de plus de
+   DELAI_AUTO_DEPOINTAGE_MS et était hors zone, on régularise sa sortie
+   à l'heure de cette dernière position — bien plus fiable qu'un seul
+   téléphone resté éveillé, même si ça reste best-effort (nécessite
+   qu'au moins une session, n'importe laquelle, soit ouverte de temps
+   à autre).
+═══════════════════════════════════════════════════════════ */
+const INTERVALLE_VERIFICATION_RETARD_MS = 5 * 60 * 1000;
+let minuteurVerificationRetard = null;
+
+function positionHorsZone(position) {
+  const resultat = GPS.zoneLaPlusProche(position.lat, position.lng);
+  return !resultat || !resultat.dansZone;
+}
+
+async function verifierPointagesEnRetard() {
+  if (!donneesEssentiellesChargees()) return;
+  const maintenant = Date.now();
+  for (const o of Stockage.donnees.ouvriers) {
+    const dernier = dernierPointageDuJour(o.id);
+    if (!dernier || dernier.type !== 'entree') continue; // pas présent, rien à vérifier
+    const position = Stockage.donnees.positions.find(p => p.id === o.id);
+    if (!position) continue; // jamais envoyé de position (ou supprimée à la déconnexion)
+    const age = maintenant - new Date(position.horodatage).getTime();
+    if (age < DELAI_AUTO_DEPOINTAGE_MS) continue;
+    if (!positionHorsZone(position)) continue; // dernière position connue toujours dans la zone : on ne peut pas conclure
+    try {
+      await db.collection('pointages').doc(genererId()).set({
+        idOuvrier: o.id,
+        type: 'sortie',
+        lat: position.lat, lng: position.lng,
+        horodatage: position.horodatage,
+        idZone: null, dansZone: false, automatique: true
+      });
+    } catch (e) {
+      console.error('Erreur auto-dépointage (surveillance passive) :', e);
+    }
+  }
+}
+
+function demarrerSurveillancePassive() {
+  if (minuteurVerificationRetard !== null) return; // déjà démarrée dans cette session
+  minuteurVerificationRetard = setInterval(verifierPointagesEnRetard, INTERVALLE_VERIFICATION_RETARD_MS);
 }
 
 /* ═══════════════════════════════════════════════════════════
