@@ -409,6 +409,7 @@ function seDeconnecter() {
   }
   GPS.arreter(); effacerSession(); utilisateurActuel = null;
   clearInterval(intervalleHorloge);
+  debutHorsZoneOuvrier = null;
   afficherVue('connexion');
   roleSelectionne = null;
   $('role-gestionnaire').classList.remove('selectionne');
@@ -447,7 +448,7 @@ function afficherVueOuvrier() {
     $('heure-ouvrier').textContent = maintenant.toLocaleTimeString('fr-BE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
     $('date-ouvrier').textContent = maintenant.toLocaleDateString('fr-BE', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
   }
-  actualiserHorloge(); intervalleHorloge = setInterval(actualiserHorloge, 1000);
+  actualiserHorloge(); intervalleHorloge = setInterval(() => { actualiserHorloge(); verifierSortieAutomatique(); }, 1000);
 
   mettreAJourStatutOuvrier();
   afficherHistoriqueOuvrier();
@@ -477,6 +478,11 @@ function gererErreurGPS(err) {
 }
 
 let dernierDansZoneConnu = null;
+
+// Sortie automatique si l'ouvrier reste hors zone en continu au-delà de ce délai
+// (oubli de pointer la sortie en quittant le chantier).
+const DELAI_SORTIE_AUTO_MS = 35 * 60 * 1000;
+let debutHorsZoneOuvrier = null;
 
 function mettreAJourStatutOuvrier() {
   if (!donneesEssentiellesChargees()) {
@@ -556,17 +562,40 @@ function envoyerPositionSiNecessaire(pos) {
 
 function verifierCoherencePointage(dansZone) {
   const el = $('alerte-pointage-manquant');
-  if (dansZone === null) { el.style.display = 'none'; return; }
+  if (dansZone === null) { el.style.display = 'none'; debutHorsZoneOuvrier = null; return; }
   const dernier = dernierPointageDuJour(utilisateurActuel.id);
   const estPresent = !!dernier && dernier.type === 'entree';
   if (dansZone && !estPresent) {
     $('texte-alerte-pointage').textContent = "Vous êtes dans la zone du chantier mais vous n'avez pas pointé votre entrée.";
     el.style.display = 'block';
+    debutHorsZoneOuvrier = null;
   } else if (!dansZone && estPresent) {
     $('texte-alerte-pointage').textContent = 'Vous avez quitté la zone du chantier sans pointer votre sortie.';
     el.style.display = 'block';
+    if (debutHorsZoneOuvrier === null) debutHorsZoneOuvrier = Date.now();
+    verifierSortieAutomatique();
   } else {
     el.style.display = 'none';
+    debutHorsZoneOuvrier = null;
+  }
+}
+
+async function verifierSortieAutomatique() {
+  if (debutHorsZoneOuvrier === null) return;
+  if (Date.now() - debutHorsZoneOuvrier < DELAI_SORTIE_AUTO_MS) return;
+  const idOuvrier = utilisateurActuel?.id;
+  debutHorsZoneOuvrier = null; // évite un double envoi pendant l'écriture
+  if (!idOuvrier) return;
+  const pos = GPS.position;
+  try {
+    await db.collection('pointages').doc(genererId()).set({
+      idOuvrier, type: 'sortie',
+      lat: pos?.lat ?? null, lng: pos?.lng ?? null,
+      horodatage: new Date().toISOString(), idZone: null, dansZone: false, auto: true
+    });
+    afficherNotification(`Sortie automatique enregistrée — hors zone depuis plus de ${DELAI_SORTIE_AUTO_MS/60000} min`, 'alerte');
+  } catch (e) {
+    console.error('Erreur sortie automatique :', e);
   }
 }
 
@@ -671,7 +700,7 @@ function afficherHistoriqueOuvrier() {
       </div>
       <div class="info-historique">
         <div class="type-historique" style="color:${estEntree?'var(--vert)':'var(--rouge)'};">${estEntree?'Entrée':'Sortie'}</div>
-        <div class="meta-historique">${p.forcee ? 'Sortie forcée par le gestionnaire' : (zone?zone.nom:'Hors zone')}${!p.forcee&&!p.dansZone&&Stockage.donnees.zones.length?' · ⚠️ Hors périmètre':''}</div>
+        <div class="meta-historique">${p.forcee ? 'Sortie forcée par le gestionnaire' : p.auto ? `Sortie automatique (hors zone plus de ${DELAI_SORTIE_AUTO_MS/60000} min)` : (zone?zone.nom:'Hors zone')}${!p.forcee&&!p.auto&&!p.dansZone&&Stockage.donnees.zones.length?' · ⚠️ Hors périmètre':''}</div>
       </div>
       <div class="heure-historique">${formaterHeureCourte(new Date(p.horodatage))}</div>
     </div>`;
@@ -1353,7 +1382,7 @@ function genererRapport() {
   corps.innerHTML = donneesRapport.map(r => {
     const p = r.pointage;
     const estEntree = p.type === 'entree';
-    const horsZone = !p.forcee && !p.dansZone && Stockage.donnees.zones.length > 0;
+    const horsZone = !p.forcee && !p.auto && !p.dansZone && Stockage.donnees.zones.length > 0;
     return `
     <tr>
       <td><div style="display:flex;align-items:center;gap:8px;">
@@ -1367,9 +1396,11 @@ function genererRapport() {
       <td>${r.duree!=null?`<span style="font-weight:600;">${formaterDuree(r.duree)}</span>`:'<span style="color:var(--texte-3);">—</span>'}</td>
       <td>${p.forcee
         ? '<span class="badge badge-bleu">Sortie forcée</span>'
-        : horsZone
-          ? '<span class="badge badge-ambre">⚠️ Hors zone</span>'
-          : '<span class="badge badge-vert">✓ OK</span>'}</td>
+        : p.auto
+          ? '<span class="badge badge-bleu">⏱ Sortie auto</span>'
+          : horsZone
+            ? '<span class="badge badge-ambre">⚠️ Hors zone</span>'
+            : '<span class="badge badge-vert">✓ OK</span>'}</td>
     </tr>`;
   }).join('');
   $('bouton-export').style.display='';
@@ -1456,8 +1487,8 @@ async function exporterExcel() {
   donneesRapport.forEach(r => {
     const p = r.pointage;
     const estEntree = p.type === 'entree';
-    const horsZone = !p.forcee && !p.dansZone && Stockage.donnees.zones.length > 0;
-    const statut = p.forcee ? 'Sortie forcée' : (horsZone ? 'Hors zone' : 'OK');
+    const horsZone = !p.forcee && !p.auto && !p.dansZone && Stockage.donnees.zones.length > 0;
+    const statut = p.forcee ? 'Sortie forcée' : p.auto ? 'Sortie auto' : (horsZone ? 'Hors zone' : 'OK');
     const ligne = feuille.addRow({
       ouvrier: r.ouvrier.nom,
       metier: r.ouvrier.metier || '',

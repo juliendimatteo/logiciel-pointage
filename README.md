@@ -11,6 +11,9 @@ les appareils via Firebase Firestore.
 - Détection de la zone de chantier la plus proche via géolocalisation
 - Radar visuel indiquant la position par rapport au périmètre autorisé
 - Alerte si la position GPS ne correspond plus au statut de pointage
+- Sortie automatique si l'ouvrier reste hors zone en continu plus de 35 minutes
+  (oubli de pointer la sortie en quittant le chantier), marquée distinctement
+  dans l'historique et les rapports
 - Historique des pointages du jour
 
 **Gestionnaire** (accès protégé par mot de passe, par compte nommé)
@@ -113,3 +116,9 @@ nécessaire (accès à Firestore).
   application envoie sa position toutes les ~20 secondes (collection
   Firestore `positions`) pour alimenter la carte en direct du gestionnaire ;
   cette position est supprimée dès qu'il se déconnecte.
+- La détection de sortie automatique (35 min hors zone) est calculée côté
+  appareil de l'ouvrier : elle nécessite que l'application reste ouverte
+  (au moins en arrière-plan) sur son téléphone. Si l'ouvrier ferme
+  l'application ou éteint son téléphone en quittant le chantier, aucune
+  détection n'est possible ; le gestionnaire garde alors la possibilité de
+  « Forcer la sortie » manuellement depuis son tableau de bord.
