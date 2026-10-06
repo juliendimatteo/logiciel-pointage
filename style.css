@@ -566,6 +566,7 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
 .boite-dialogue {
   background: var(--carte); border-radius: var(--rayon-xl);
   padding: 28px; max-width: 360px; width: 100%;
+  max-height: calc(100vh - 32px); overflow-y: auto;
   box-shadow: var(--ombre-lg);
 }
 .titre-dialogue { font-family: var(--police-titre); font-size: 18px; font-weight: 700; margin-bottom: 8px; }

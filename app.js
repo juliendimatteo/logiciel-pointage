@@ -375,6 +375,9 @@ async function verifierPointagesEnRetard() {
     if (!dernier || dernier.type !== 'entree') continue; // pas présent, rien à vérifier
     const position = Stockage.donnees.positions.find(p => p.id === o.id);
     if (!position) continue; // jamais envoyé de position (ou supprimée à la déconnexion)
+    // Position antérieure à l'entrée (ex. entrée saisie manuellement par le
+    // gestionnaire, ouvrier sans GPS) : elle ne dit rien de la présence actuelle
+    if (new Date(position.horodatage) <= new Date(dernier.horodatage)) continue;
     const age = maintenant - new Date(position.horodatage).getTime();
     if (age < DELAI_AUTO_DEPOINTAGE_MS) continue;
     if (!positionHorsZone(position)) continue; // dernière position connue toujours dans la zone : on ne peut pas conclure
@@ -864,7 +867,7 @@ function afficherHistoriqueOuvrier() {
       </div>
       <div class="info-historique">
         <div class="type-historique" style="color:${estEntree?'var(--vert)':'var(--rouge)'};">${estEntree?'Entrée':'Sortie'}</div>
-        <div class="meta-historique">${p.forcee ? 'Sortie forcée par le gestionnaire' : p.automatique ? 'Sortie automatique (1h hors zone)' : (zone?zone.nom:'Hors zone')}${!p.forcee&&!p.automatique&&!p.dansZone&&Stockage.donnees.zones.length?' · ⚠️ Hors périmètre':''}</div>
+        <div class="meta-historique">${p.forcee ? 'Sortie forcée par le gestionnaire' : p.automatique ? 'Sortie automatique (1h hors zone)' : p.manuel ? `Saisi par le gestionnaire${zone ? ' · ' + zone.nom : ''}` : (zone?zone.nom:'Hors zone')}${!p.forcee&&!p.automatique&&!p.manuel&&!p.dansZone&&Stockage.donnees.zones.length?' · ⚠️ Hors périmètre':''}</div>
       </div>
       <div class="heure-historique">${formaterHeureCourte(new Date(p.horodatage))}</div>
     </div>`;
@@ -1148,7 +1151,10 @@ function actualiserGestionnaire() {
           <span class="valeur-stat-ouvrier">${zone?zone.nom:estPresent?'Hors zone':'—'}</span>
         </div>
       </div>
-      ${estPresent ? `<button class="bouton bouton-fantome bouton-petit" style="width:100%;margin-top:12px;" onclick="forcerSortie('${o.id}')">Forcer la sortie</button>` : ''}
+      <div style="display:flex;gap:6px;margin-top:12px;">
+        ${estPresent ? `<button class="bouton bouton-fantome bouton-petit" style="flex:1;" onclick="forcerSortie('${o.id}')">Forcer la sortie</button>` : ''}
+        <button class="bouton bouton-fantome bouton-petit" style="flex:1;" onclick="ouvrirPointageManuel('${o.id}')">✍️ ${estPresent ? 'Saisir' : "Saisir l'entrée"}</button>
+      </div>
     </div>`;
   });
 
@@ -1186,6 +1192,94 @@ function forcerSortie(idOuvrier) {
       afficherNotification('Erreur : ' + e.message, 'erreur');
     }
   });
+}
+
+/* ─── POINTAGE MANUEL (oubli, pas de réseau, GPS indisponible) ─── */
+const MOTIFS_POINTAGE_MANUEL = {
+  oubli:  'Oubli de pointage',
+  reseau: 'Pas de réseau',
+  gps:    'GPS indisponible',
+  autre:  'Autre',
+};
+const libelleMotifManuel = m => MOTIFS_POINTAGE_MANUEL[m] || 'Saisie manuelle';
+
+function ouvrirPointageManuel(idOuvrier = '') {
+  const sel = $('manuel-ouvrier');
+  sel.innerHTML = '<option value="">Choisir un ouvrier…</option>';
+  [...Stockage.donnees.ouvriers].sort((a,b) => a.nom.localeCompare(b.nom)).forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.id; opt.textContent = o.nom;
+    sel.appendChild(opt);
+  });
+  const selZone = $('manuel-zone');
+  selZone.innerHTML = '<option value="">Aucune zone</option>';
+  Stockage.donnees.zones.forEach(z => {
+    const opt = document.createElement('option');
+    opt.value = z.id; opt.textContent = z.nom;
+    selZone.appendChild(opt);
+  });
+  sel.value = idOuvrier;
+  $('manuel-horodatage').value = versDatetimeLocal(new Date().toISOString());
+  $('manuel-motif').value = 'oubli';
+  proposerValeursPointageManuel();
+  $('dialogue-pointage-manuel').classList.add('ouvert');
+}
+
+// Propose le type logique (sortie si l'ouvrier est présent, sinon entrée)
+// et la zone de sa dernière entrée du jour, s'il y en a une.
+function proposerValeursPointageManuel() {
+  const idOuvrier = $('manuel-ouvrier').value;
+  const dernier = idOuvrier ? dernierPointageDuJour(idOuvrier) : null;
+  $('manuel-type').value = dernier && dernier.type === 'entree' ? 'sortie' : 'entree';
+  const zoneDefaut = dernier?.idZone || (Stockage.donnees.zones.length === 1 ? Stockage.donnees.zones[0].id : '');
+  $('manuel-zone').value = Stockage.donnees.zones.some(z => z.id === zoneDefaut) ? zoneDefaut : '';
+}
+
+function fermerPointageManuel() {
+  $('dialogue-pointage-manuel').classList.remove('ouvert');
+}
+$('dialogue-pointage-manuel').addEventListener('click', e => { if (e.target === $('dialogue-pointage-manuel')) fermerPointageManuel(); });
+
+async function enregistrerPointageManuel() {
+  const idOuvrier = $('manuel-ouvrier').value;
+  const type = $('manuel-type').value;
+  const valeur = $('manuel-horodatage').value;
+  const idZone = $('manuel-zone').value || null;
+  const motifManuel = $('manuel-motif').value;
+
+  if (!idOuvrier) { afficherNotification('Choisissez un ouvrier', 'erreur'); return; }
+  if (type !== 'entree' && type !== 'sortie') { afficherNotification('Choisissez entrée ou sortie', 'erreur'); return; }
+  if (!valeur) { afficherNotification('Indiquez une date et une heure', 'erreur'); return; }
+  const horodatage = new Date(valeur).toISOString();
+  if (new Date(horodatage).getTime() > Date.now() + 60 * 1000) { afficherNotification("L'heure ne peut pas être dans le futur", 'erreur'); return; }
+
+  // Cohérence avec le pointage qui précède le même jour (deux entrées ou deux sorties d'affilée)
+  const jour = jourLocalDe(horodatage);
+  const precedent = Stockage.donnees.pointages
+    .filter(p => p.idOuvrier === idOuvrier && jourLocalDe(p.horodatage) === jour && p.horodatage < horodatage)
+    .sort((a,b) => new Date(a.horodatage) - new Date(b.horodatage))
+    .pop();
+  const incoherent = precedent ? precedent.type === type : type === 'sortie';
+
+  const o = Stockage.donnees.ouvriers.find(x => x.id === idOuvrier);
+  try {
+    await db.collection('pointages').doc(genererId()).set({
+      idOuvrier, type, lat: null, lng: null, horodatage,
+      idZone, dansZone: !!idZone,
+      manuel: true, motifManuel, encodePar: utilisateurActuel.nom, encodeLe: new Date().toISOString()
+    });
+    fermerPointageManuel();
+    if ($('onglet-rapports').classList.contains('actif') && donneesRapport.length) genererRapport();
+    if (incoherent) {
+      afficherNotification(precedent
+        ? `Enregistré, mais ${o ? o.nom : "l'ouvrier"} avait déjà une ${type === 'entree' ? 'entrée' : 'sortie'} à ${formaterHeureCourte(new Date(precedent.horodatage))} ce jour-là — vérifiez dans Rapports`
+        : `Enregistré, mais aucune entrée ne précède cette sortie ce jour-là — vérifiez dans Rapports`, 'alerte');
+    } else {
+      afficherNotification(`${type === 'entree' ? 'Entrée' : 'Sortie'} enregistrée pour ${o ? o.nom : "l'ouvrier"} à ${formaterHeureCourte(new Date(horodatage))}`, 'succes');
+    }
+  } catch (e) {
+    afficherNotification('Erreur : ' + e.message, 'erreur');
+  }
 }
 
 /* ─── COMPTES GESTIONNAIRE (accès administrateur / tiers) ─── */
@@ -1754,7 +1848,7 @@ function genererRapport() {
   corps.innerHTML = donneesRapport.map(r => {
     const p = r.pointage;
     const estEntree = p.type === 'entree';
-    const horsZone = !p.forcee && !p.automatique && !p.dansZone && Stockage.donnees.zones.length > 0;
+    const horsZone = !p.forcee && !p.automatique && !p.manuel && !p.dansZone && Stockage.donnees.zones.length > 0;
     return `
     <tr>
       <td><div style="display:flex;align-items:center;gap:8px;">
@@ -1768,6 +1862,8 @@ function genererRapport() {
       <td>${r.duree!=null?`<span style="font-weight:600;">${formaterDuree(r.duree)}</span>`:'<span style="color:var(--texte-3);">—</span>'}</td>
       <td>${p.forcee
         ? '<span class="badge badge-bleu">Sortie forcée</span>'
+        : p.manuel
+          ? `<span class="badge badge-bleu" title="${echapperHtml(`${libelleMotifManuel(p.motifManuel)} · saisi par ${p.encodePar || '—'}`)}">✍️ Saisie manuelle</span>`
         : p.automatique
           ? '<span class="badge badge-bleu">Sortie automatique</span>'
           : horsZone
@@ -1920,8 +2016,8 @@ async function exporterExcel() {
   donneesRapport.forEach(r => {
     const p = r.pointage;
     const estEntree = p.type === 'entree';
-    const horsZone = !p.forcee && !p.automatique && !p.dansZone && Stockage.donnees.zones.length > 0;
-    const statut = p.forcee ? 'Sortie forcée' : p.automatique ? 'Sortie automatique' : (horsZone ? 'Hors zone' : 'OK');
+    const horsZone = !p.forcee && !p.automatique && !p.manuel && !p.dansZone && Stockage.donnees.zones.length > 0;
+    const statut = p.forcee ? 'Sortie forcée' : p.manuel ? `Saisie manuelle (${libelleMotifManuel(p.motifManuel).toLowerCase()})` : p.automatique ? 'Sortie automatique' : (horsZone ? 'Hors zone' : 'OK');
     const ligne = feuille.addRow({
       ouvrier: r.ouvrier.nom,
       metier: r.ouvrier.metier || '',

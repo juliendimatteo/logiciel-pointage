@@ -27,6 +27,10 @@ les appareils via Firebase Firestore.
   avec commentaire facultatif ; les chevauchements sont refusés. L'absence
   apparaît sur la carte de l'ouvrier dans la vue d'ensemble (compteur dédié,
   distinct des absents « non pointés »)
+- **Saisie manuelle d'un pointage** (entrée ou sortie, à l'heure choisie,
+  avec zone et motif : oubli, pas de réseau, GPS indisponible…) depuis la
+  carte de l'ouvrier ou l'onglet Rapports ; le pointage est marqué « Saisie
+  manuelle » (avec l'auteur) dans les rapports et l'export Excel
 - Rapports par période et par ouvrier : totaux de temps passé par jour
   et par zone, et détail de chaque pointage (avec durée de session pour
   chaque sortie), et absences de la période avec le nombre de jours
@@ -116,6 +120,12 @@ nécessaire (accès à Firestore).
 - `.github/workflows/pages.yml` — déploiement automatique sur GitHub Pages
 
 ## Notes
+
+- **À chaque modification de `app.js` ou `style.css`**, incrémenter le
+  paramètre de version (`?v=…`) dans `index.html` et le nom du cache dans
+  `service-worker.js` : la page et son script sont ainsi toujours rechargés
+  ensemble (sinon le cache du navigateur peut associer une page à jour à un
+  script périmé).
 
 - Le GPS du navigateur est requis pour pointer ; sans autorisation de
   localisation (ou en cas d'échec), le pointage est bloqué avec un message
