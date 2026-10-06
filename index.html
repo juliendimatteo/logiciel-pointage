@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 
@@ -48,6 +48,50 @@
     <div class="actions-dialogue">
       <button class="bouton bouton-fantome bouton-petit" onclick="fermerModifPointage()">Annuler</button>
       <button class="bouton bouton-primaire bouton-petit" onclick="enregistrerModifPointage()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── BOÎTE DE DIALOGUE DE SAISIE MANUELLE D'UN POINTAGE ─── -->
+<div id="dialogue-pointage-manuel" class="fond-dialogue">
+  <div class="boite-dialogue">
+    <div class="titre-dialogue">✍️ Saisie manuelle d'un pointage</div>
+    <div style="font-size:13px;color:var(--texte-2);margin-bottom:16px;">
+      Pour un ouvrier qui a oublié de pointer ou n'avait pas de réseau / GPS.
+    </div>
+    <div class="grille-formulaire" style="margin-bottom:20px;">
+      <div class="champ">
+        <label class="libelle-champ">Ouvrier</label>
+        <select class="champ-liste" id="manuel-ouvrier" onchange="proposerValeursPointageManuel()"></select>
+      </div>
+      <div class="champ">
+        <label class="libelle-champ">Type</label>
+        <select class="champ-liste" id="manuel-type">
+          <option value="entree">⬆️ Entrée</option>
+          <option value="sortie">⬇️ Sortie</option>
+        </select>
+      </div>
+      <div class="champ">
+        <label class="libelle-champ">Date et heure</label>
+        <input type="datetime-local" id="manuel-horodatage">
+      </div>
+      <div class="champ">
+        <label class="libelle-champ">Zone</label>
+        <select class="champ-liste" id="manuel-zone"></select>
+      </div>
+      <div class="champ">
+        <label class="libelle-champ">Motif</label>
+        <select class="champ-liste" id="manuel-motif">
+          <option value="oubli">Oubli de pointage</option>
+          <option value="reseau">Pas de réseau</option>
+          <option value="gps">GPS indisponible</option>
+          <option value="autre">Autre</option>
+        </select>
+      </div>
+    </div>
+    <div class="actions-dialogue">
+      <button class="bouton bouton-fantome bouton-petit" onclick="fermerPointageManuel()">Annuler</button>
+      <button class="bouton bouton-primaire bouton-petit" onclick="enregistrerPointageManuel()">Enregistrer</button>
     </div>
   </div>
 </div>
@@ -463,6 +507,7 @@
           </div>
         </div>
         <button class="bouton bouton-primaire" onclick="genererRapport()">Générer</button>
+        <button class="bouton bouton-fantome" onclick="ouvrirPointageManuel($('rapport-ouvrier').value)">✍️ Ajouter un pointage</button>
         <button class="bouton bouton-fantome" onclick="exporterExcel()" id="bouton-export" style="display:none;">⬇ Exporter Excel</button>
       </div>
       <div class="entete-section" style="margin:24px 0 14px;">
@@ -561,7 +606,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js').catch(() => {}));
