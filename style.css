@@ -450,7 +450,7 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
 .panneau-onglet.actif { display: block; }
 
 /* Ligne de statistiques */
-.ligne-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+.ligne-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
 .carte-stat { padding: 20px 22px; }
 .entete-carte-stat { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .icone-carte-stat {
@@ -491,7 +491,7 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
 .haut-carte-zone { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .nom-zone { font-weight: 700; font-size: 15px; }
 .meta-zone { font-size: 12px; color: var(--texte-2); margin-top: 2px; }
-.ouvriers-zone { display: flex; gap: 8px; flex-wrap: wrap; }
+.ouvriers-zone { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .puce-ouvrier-zone {
   padding: 3px 10px; border-radius: 999px;
   background: var(--fond-2); font-size: 11px; font-weight: 500;
@@ -583,9 +583,9 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
 .etiquette-zone-carte::before { display: none !important; }
 
 /* Adaptatif */
+@media (max-width: 900px) { .ligne-stats { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 600px) {
   .ligne-stats { grid-template-columns: 1fr 1fr; }
-  .ligne-stats .carte-stat:last-child { grid-column: 1 / -1; }
   .grille-ouvriers { grid-template-columns: 1fr; }
   #vue-ouvrier .contenu { padding: 16px; }
   #vue-gestionnaire .contenu { padding: 16px; }

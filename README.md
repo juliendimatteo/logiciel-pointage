@@ -20,9 +20,17 @@ les appareils via Firebase Firestore.
   actuellement présents, mise à jour automatiquement
 - Gestion des ouvriers (ajout, suppression)
 - Gestion des zones de chantier (nom, adresse ou coordonnées GPS, rayon)
+- Onglet **Absences** : encoder pour un ouvrier, sur un jour ou une période,
+  une absence motivée — maladie, congé, récupération, formation, accident de
+  travail ou absence à justifier (requalifiable ensuite via « Modifier ») —
+  avec commentaire facultatif ; les chevauchements sont refusés. L'absence
+  apparaît sur la carte de l'ouvrier dans la vue d'ensemble (compteur dédié,
+  distinct des absents « non pointés »)
 - Rapports par période et par ouvrier : totaux de temps passé par jour
   et par zone, et détail de chaque pointage (avec durée de session pour
-  chaque sortie) ; export Excel (.xlsx) mis en forme sur deux feuilles
+  chaque sortie), et absences de la période avec le nombre de jours
+  ouvrables (lun.–ven.) ; export Excel (.xlsx) mis en forme sur trois
+  feuilles (totaux, pointages, absences)
 - Onglet **Comptes** (réservé à l'administrateur) : autoriser l'accès
   gestionnaire à un tiers (ex. secrétaire) sous un nom dédié, avec son propre
   mot de passe ; désactiver, réinitialiser le mot de passe ou supprimer un
@@ -44,6 +52,10 @@ partagées (ouvriers, zones, pointages) sont stockées dans **Firebase
 Firestore**, avec synchronisation en temps réel : tous les appareils
 connectés (gestionnaire et ouvriers) voient les mêmes données se mettre à
 jour instantanément, sans recharger la page.
+
+Les absences sont stockées dans la collection `absences` (un document par
+absence : `idOuvrier`, `type`, `du`, `au` au format `AAAA-MM-JJ` bornes
+incluses, `commentaire`, `creePar`/`creeLe`, `modifiePar`/`modifieLe`).
 
 Les comptes gestionnaire (nom, mot de passe haché SHA-256, statut
 administrateur/actif) sont stockés dans Firestore (collection `comptes`),
