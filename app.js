@@ -12,6 +12,7 @@ const dateAujourdhui = () => dateLocale(new Date());
 const jourLocalDe = horodatage => dateLocale(new Date(horodatage));
 const dateDepuisLocale = jour => { const [a,m,j] = jour.split('-').map(Number); return new Date(a, m-1, j); };
 const genererId = () => Math.random().toString(36).slice(2,10);
+const echapperHtml = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function distanceGeo(lat1, lon1, lat2, lon2) {
   const R = 6371000, versRad = d => d * Math.PI / 180;
@@ -64,7 +65,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 const Stockage = {
-  donnees: { ouvriers: [], zones: [], pointages: [], positions: [], comptes: [] },
+  donnees: { ouvriers: [], zones: [], pointages: [], positions: [], comptes: [], absences: [] },
 
   async initialiserFirestore() {
     const maintenant = new Date();
@@ -144,6 +145,11 @@ function demarrerSynchronisation() {
     if (carteLeaflet) mettreAJourCarte();
   }, err => { console.error('Erreur de synchronisation (positions) :', err); });
 
+  db.collection('absences').onSnapshot(snap => {
+    Stockage.donnees.absences = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    rafraichirSelonContexte();
+  }, err => { console.error('Erreur de synchronisation (absences) :', err); afficherNotification('Synchronisation impossible (absences)', 'erreur'); });
+
   db.collection('comptes').onSnapshot(snap => {
     Stockage.donnees.comptes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     syncComptesPrete = true;
@@ -164,6 +170,8 @@ function rafraichirSelonContexte() {
     afficherOuvriersGestion();
     afficherZones();
     remplirOuvriersRapport();
+    remplirOuvriersAbsence();
+    afficherAbsences();
     if (utilisateurActuel.admin) afficherComptes();
     if (carteLeaflet) mettreAJourCarte();
   } else if (utilisateurActuel.role === 'ouvrier') {
@@ -973,6 +981,9 @@ function afficherVueGestionnaire() {
   afficherZones();
   initialiserDatesRapport();
   remplirOuvriersRapport();
+  remplirOuvriersAbsence();
+  reinitialiserFormulaireAbsence();
+  afficherAbsences();
   if (utilisateurActuel.admin) afficherComptes();
 }
 
@@ -1082,7 +1093,7 @@ function actualiserGestionnaire() {
   const aujourdhui = dateAujourdhui();
   const ouvriers = Stockage.donnees.ouvriers;
 
-  let presents=0, absents=0, horsZone=0;
+  let presents=0, absents=0, horsZone=0, absencesEncodees=0;
   const cartes = ouvriers.map(o => {
     const pointagesJour = Stockage.donnees.pointages
       .filter(p=>p.idOuvrier===o.id && jourLocalDe(p.horodatage) === aujourdhui)
@@ -1091,7 +1102,9 @@ function actualiserGestionnaire() {
     const estPresent = dernier && dernier.type==='entree';
     const estHorsZone = estPresent && !dernier.dansZone && Stockage.donnees.zones.length>0;
 
+    const absence = absenceDuJour(o.id, aujourdhui);
     if (estPresent) { presents++; if (estHorsZone) horsZone++; }
+    else if (absence) absencesEncodees++;
     else absents++;
 
     const premiereEntree = pointagesJour.find(p=>p.type==='entree');
@@ -1112,9 +1125,12 @@ function actualiserGestionnaire() {
           ? estHorsZone
             ? '<span class="badge badge-ambre"><span class="point point-ambre point-pulsation"></span>Hors zone</span>'
             : '<span class="badge badge-vert"><span class="point point-vert point-pulsation"></span>Présent</span>'
-          : '<span class="badge badge-gris">Absent</span>'
+          : absence
+            ? badgeAbsence(absence.type)
+            : '<span class="badge badge-gris">Absent</span>'
         }
       </div>
+      ${absence && !estPresent ? `<div class="meta-zone" style="margin:-4px 0 8px;">${libellePeriodeAbsence(absence)}${absence.commentaire ? ' · ' + echapperHtml(absence.commentaire) : ''}</div>` : ''}
       <div class="stats-carte-ouvrier">
         <div class="ligne-stat-ouvrier">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
@@ -1138,6 +1154,7 @@ function actualiserGestionnaire() {
 
   $('stat-presents').textContent = presents;
   $('stat-absents').textContent = absents;
+  $('stat-absences').textContent = absencesEncodees;
   $('stat-hors-zone').textContent = horsZone;
   $('grille-ouvriers-gestionnaire').innerHTML = cartes.join('');
 }
@@ -1453,9 +1470,182 @@ async function rechercherAdresse() {
   }
 }
 
+/* ─── ABSENCES ─── */
+const TYPES_ABSENCE = {
+  maladie:      { libelle: 'Maladie',             icone: '🤒', badge: 'badge-rouge', excel: 'FFB91C1C' },
+  conge:        { libelle: 'Congé',               icone: '🏖️', badge: 'badge-bleu',  excel: 'FF1D4ED8' },
+  recuperation: { libelle: 'Récupération',        icone: '🔄', badge: 'badge-bleu',  excel: 'FF0F766E' },
+  formation:    { libelle: 'Formation',           icone: '🎓', badge: 'badge-vert',  excel: 'FF15803D' },
+  accident:     { libelle: 'Accident de travail', icone: '🚑', badge: 'badge-rouge', excel: 'FFB91C1C' },
+  a_justifier:  { libelle: 'Absence à justifier', icone: '❓', badge: 'badge-ambre', excel: 'FFD97706' },
+};
+const typeAbsence = type => TYPES_ABSENCE[type] || { libelle: type, icone: '•', badge: 'badge-gris', excel: 'FF475569' };
+const badgeAbsence = type => { const t = typeAbsence(type); return `<span class="badge ${t.badge}">${t.icone} ${t.libelle}</span>`; };
+
+// Les absences sont stockées par jour local (AAAA-MM-JJ), bornes incluses :
+// une comparaison de chaînes suffit.
+function absenceDuJour(idOuvrier, jour) {
+  return Stockage.donnees.absences.find(a => a.idOuvrier === idOuvrier && a.du <= jour && jour <= a.au) || null;
+}
+
+function libellePeriodeAbsence(a) {
+  return a.du === a.au
+    ? `Le ${formaterDateCourte(dateDepuisLocale(a.du))}`
+    : `Du ${formaterDateCourte(dateDepuisLocale(a.du))} au ${formaterDateCourte(dateDepuisLocale(a.au))}`;
+}
+
+// Jours ouvrables (lundi → vendredi) entre deux jours locaux inclus
+function joursOuvrables(du, au) {
+  let n = 0;
+  for (let d = dateDepuisLocale(du); dateLocale(d) <= au; d.setDate(d.getDate() + 1)) {
+    const j = d.getDay();
+    if (j !== 0 && j !== 6) n++;
+  }
+  return n;
+}
+
+let absenceEnEdition = null;
+
+function remplirOuvriersAbsence() {
+  const sel = $('absence-ouvrier');
+  const valeur = sel.value;
+  sel.innerHTML = '<option value="">Choisir un ouvrier…</option>';
+  [...Stockage.donnees.ouvriers].sort((a,b) => a.nom.localeCompare(b.nom)).forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.id; opt.textContent = o.nom;
+    sel.appendChild(opt);
+  });
+  sel.value = valeur;
+}
+
+function afficherAbsences() {
+  const el = $('liste-absences');
+  const aujourdhui = dateAujourdhui();
+  const toutes = $('filtre-absences').value === 'toutes';
+  const absences = Stockage.donnees.absences
+    .filter(a => toutes || a.au >= aujourdhui)
+    .sort((a,b) => toutes ? (a.du < b.du ? 1 : a.du > b.du ? -1 : 0) : (a.du < b.du ? -1 : a.du > b.du ? 1 : 0));
+
+  if (!absences.length) {
+    el.innerHTML = `<div class="etat-vide"><div class="icone-etat-vide">🗓️</div><div class="texte-etat-vide">${toutes ? 'Aucune absence encodée.' : 'Aucune absence en cours ou à venir.'}</div></div>`;
+    return;
+  }
+  el.innerHTML = absences.map(a => {
+    const o = Stockage.donnees.ouvriers.find(x => x.id === a.idOuvrier);
+    const enCours = a.du <= aujourdhui && aujourdhui <= a.au;
+    const nbJours = joursOuvrables(a.du, a.au);
+    return `<div class="carte carte-zone">
+      <div class="haut-carte-zone">
+        <div>
+          <div class="nom-zone">${o ? o.nom : '<span style="color:var(--texte-3);">Ouvrier supprimé</span>'}</div>
+          <div class="meta-zone">${libellePeriodeAbsence(a)} · ${nbJours} jour${nbJours > 1 ? 's' : ''} ouvrable${nbJours > 1 ? 's' : ''}${enCours ? ' · <strong>en cours</strong>' : ''}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="bouton bouton-fantome bouton-petit" onclick="modifierAbsence('${a.id}')">Modifier</button>
+          <button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);" onclick="supprimerAbsence('${a.id}')">Supprimer</button>
+        </div>
+      </div>
+      <div class="ouvriers-zone">
+        ${badgeAbsence(a.type)}
+        ${a.commentaire ? `<span style="font-size:12px;color:var(--texte-2);">${echapperHtml(a.commentaire)}</span>` : ''}
+      </div>
+      <div class="astuce-formulaire" style="margin-top:8px;">Encodé par ${echapperHtml(a.creePar || '—')}${a.modifiePar ? ` · modifié par ${echapperHtml(a.modifiePar)}` : ''}</div>
+    </div>`;
+  }).join('');
+}
+
+function reinitialiserFormulaireAbsence() {
+  absenceEnEdition = null;
+  $('absence-ouvrier').value = '';
+  $('absence-type').value = 'maladie';
+  $('absence-du').value = dateAujourdhui();
+  $('absence-au').value = dateAujourdhui();
+  $('absence-commentaire').value = '';
+  $('titre-ajout-absence').textContent = '➕ Encoder une absence';
+  $('bouton-enregistrer-absence').textContent = "Enregistrer l'absence";
+  $('bouton-annuler-modif-absence').style.display = 'none';
+}
+
+function synchroniserDatesAbsence() {
+  // Facilite l'encodage d'un seul jour : la date de fin suit la date de début
+  if (!$('absence-au').value || $('absence-au').value < $('absence-du').value) $('absence-au').value = $('absence-du').value;
+}
+
+function modifierAbsence(id) {
+  const a = Stockage.donnees.absences.find(x => x.id === id);
+  if (!a) return;
+  absenceEnEdition = id;
+  $('absence-ouvrier').value = a.idOuvrier;
+  $('absence-type').value = a.type;
+  $('absence-du').value = a.du;
+  $('absence-au').value = a.au;
+  $('absence-commentaire').value = a.commentaire || '';
+  $('titre-ajout-absence').textContent = "✏️ Modifier l'absence";
+  $('bouton-enregistrer-absence').textContent = 'Enregistrer les modifications';
+  $('bouton-annuler-modif-absence').style.display = '';
+  $('absence-ouvrier').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function enregistrerAbsence() {
+  const idOuvrier = $('absence-ouvrier').value;
+  const type = $('absence-type').value;
+  const du = $('absence-du').value;
+  const au = $('absence-au').value;
+  const commentaire = $('absence-commentaire').value.trim();
+
+  if (!idOuvrier) { afficherNotification('Choisissez un ouvrier', 'erreur'); return; }
+  if (!TYPES_ABSENCE[type]) { afficherNotification("Choisissez un type d'absence", 'erreur'); return; }
+  if (!du || !au || du > au) { afficherNotification('Sélectionnez une période valide', 'erreur'); return; }
+
+  const chevauchement = Stockage.donnees.absences.find(a =>
+    a.id !== absenceEnEdition && a.idOuvrier === idOuvrier && a.du <= au && du <= a.au);
+  if (chevauchement) {
+    afficherNotification(`Chevauche une absence existante (${typeAbsence(chevauchement.type).libelle}, ${libellePeriodeAbsence(chevauchement).toLowerCase()})`, 'erreur');
+    return;
+  }
+
+  const o = Stockage.donnees.ouvriers.find(x => x.id === idOuvrier);
+  try {
+    if (absenceEnEdition) {
+      await db.collection('absences').doc(absenceEnEdition).update({
+        idOuvrier, type, du, au, commentaire,
+        modifiePar: utilisateurActuel.nom, modifieLe: new Date().toISOString()
+      });
+      afficherNotification('Absence modifiée', 'succes');
+    } else {
+      await db.collection('absences').doc(genererId()).set({
+        idOuvrier, type, du, au, commentaire,
+        creePar: utilisateurActuel.nom, creeLe: new Date().toISOString()
+      });
+      afficherNotification(`${typeAbsence(type).libelle} encodé(e) pour ${o ? o.nom : "l'ouvrier"}`, 'succes');
+    }
+    reinitialiserFormulaireAbsence();
+  } catch (e) {
+    afficherNotification('Erreur : ' + e.message, 'erreur');
+  }
+}
+
+function supprimerAbsence(id) {
+  const a = Stockage.donnees.absences.find(x => x.id === id);
+  if (!a) return;
+  const o = Stockage.donnees.ouvriers.find(x => x.id === a.idOuvrier);
+  ouvrirDialogue("Supprimer l'absence",
+    `Supprimer « ${typeAbsence(a.type).libelle} » de ${o ? o.nom : 'cet ouvrier'} (${libellePeriodeAbsence(a).toLowerCase()}) ?`,
+    async () => {
+      try {
+        await db.collection('absences').doc(id).delete();
+        if (absenceEnEdition === id) reinitialiserFormulaireAbsence();
+        afficherNotification('Absence supprimée', 'info');
+      } catch (e) {
+        afficherNotification('Erreur : ' + e.message, 'erreur');
+      }
+    });
+}
+
 /* ─── RAPPORTS ─── */
 let donneesRapport = [];
 let donneesTotauxZone = [];
+let donneesAbsencesRapport = [];
 
 function initialiserDatesRapport() {
   const maintenant = new Date();
@@ -1528,10 +1718,34 @@ function genererRapport() {
     </tr>
   `).join('') : '<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--texte-3);">Aucun pointage pour cette période</td></tr>';
 
+  // Absences qui recoupent la période, bornées à celle-ci pour le décompte des jours
+  const idsOuvriers = new Set(ouvriers.map(o => o.id));
+  donneesAbsencesRapport = Stockage.donnees.absences
+    .filter(a => idsOuvriers.has(a.idOuvrier) && a.du <= au && du <= a.au)
+    .map(a => {
+      const debut = a.du > du ? a.du : du, fin = a.au < au ? a.au : au;
+      return { absence: a, ouvrier: ouvriers.find(o => o.id === a.idOuvrier), debut, fin, jours: joursOuvrables(debut, fin) };
+    })
+    .sort((a,b) => a.ouvrier.nom !== b.ouvrier.nom ? a.ouvrier.nom.localeCompare(b.ouvrier.nom) : (a.debut < b.debut ? -1 : 1));
+
+  $('corps-absences-rapport').innerHTML = donneesAbsencesRapport.length ? donneesAbsencesRapport.map(r => `
+    <tr>
+      <td><div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:24px;height:24px;border-radius:50%;background:${couleurAvatar(r.ouvrier.nom)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;font-family:var(--police-titre);flex-shrink:0;">${initiales(r.ouvrier.nom)}</div>
+        <span style="font-weight:500;">${r.ouvrier.nom}</span>
+      </div></td>
+      <td>${badgeAbsence(r.absence.type)}</td>
+      <td>${formaterDateCourte(dateDepuisLocale(r.debut))}</td>
+      <td>${formaterDateCourte(dateDepuisLocale(r.fin))}</td>
+      <td><span style="font-weight:600;">${r.jours}</span></td>
+      <td>${r.absence.commentaire ? echapperHtml(r.absence.commentaire) : '<span style="color:var(--texte-3);">—</span>'}</td>
+    </tr>
+  `).join('') : '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--texte-3);">Aucune absence pour cette période</td></tr>';
+
   const corps = $('corps-rapport');
   if (!donneesRapport.length) {
     corps.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--texte-3);">Aucun pointage pour cette période</td></tr>';
-    $('bouton-export').style.display='none';
+    $('bouton-export').style.display = donneesAbsencesRapport.length ? '' : 'none';
     return;
   }
 
@@ -1564,7 +1778,7 @@ function genererRapport() {
     </tr>`;
   }).join('');
   $('bouton-export').style.display='';
-  afficherNotification(`${donneesRapport.length} pointage(s) trouvé(s)`, 'succes');
+  afficherNotification(`${donneesRapport.length} pointage(s) et ${donneesAbsencesRapport.length} absence(s) trouvé(s)`, 'succes');
 }
 
 function versDatetimeLocal(iso) {
@@ -1663,7 +1877,7 @@ function styliserLignesRapport(feuille, derniereColonneLettre) {
 }
 
 async function exporterExcel() {
-  if (!donneesRapport.length) return;
+  if (!donneesRapport.length && !donneesAbsencesRapport.length) return;
 
   const classeur = new ExcelJS.Workbook();
   classeur.creator = 'PointagePro DI MATTEO';
@@ -1732,6 +1946,32 @@ async function exporterExcel() {
   });
 
   styliserLignesRapport(feuille, 'H');
+
+  const feuilleAbsences = preparerFeuilleRapport(classeur, 'Absences',
+    `Absences — ${titrePeriode}`,
+    [
+      { header: 'Ouvrier',          key: 'ouvrier',     width: 24 },
+      { header: 'Type',             key: 'type',        width: 22 },
+      { header: 'Du',               key: 'du',          width: 13 },
+      { header: 'Au',               key: 'au',          width: 13 },
+      { header: 'Jours ouvrables',  key: 'jours',       width: 16 },
+      { header: 'Commentaire',      key: 'commentaire', width: 36 },
+      { header: 'Encodé par',       key: 'creePar',     width: 18 },
+    ], 'G');
+  donneesAbsencesRapport.forEach(r => {
+    const t = typeAbsence(r.absence.type);
+    const ligne = feuilleAbsences.addRow({
+      ouvrier: r.ouvrier.nom,
+      type: t.libelle,
+      du: formaterDateCourte(dateDepuisLocale(r.debut)),
+      au: formaterDateCourte(dateDepuisLocale(r.fin)),
+      jours: r.jours,
+      commentaire: r.absence.commentaire || '',
+      creePar: r.absence.creePar || '',
+    });
+    ligne.getCell('type').font = { color: { argb: t.excel }, bold: true };
+  });
+  styliserLignesRapport(feuilleAbsences, 'G');
 
   const tampon = await classeur.xlsx.writeBuffer();
   const blob = new Blob([tampon], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

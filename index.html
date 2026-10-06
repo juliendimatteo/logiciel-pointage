@@ -243,6 +243,7 @@
       <button class="bouton-onglet" onclick="changerOnglet('ouvriers', this)">👥 Ouvriers</button>
       <button class="bouton-onglet" onclick="changerOnglet('zones', this)">📍 Zones</button>
       <button class="bouton-onglet" onclick="changerOnglet('carte', this)">🗺️ Carte</button>
+      <button class="bouton-onglet" onclick="changerOnglet('absences', this)">🗓️ Absences</button>
       <button class="bouton-onglet" onclick="changerOnglet('rapports', this)">📊 Rapports</button>
       <button class="bouton-onglet" id="bouton-onglet-comptes" onclick="changerOnglet('comptes', this)" style="display:none;">🔑 Comptes</button>
     </div>
@@ -264,7 +265,15 @@
             <div class="icone-carte-stat" style="background:var(--rouge-clair);">🔴</div>
           </div>
           <div class="valeur-stat" id="stat-absents" style="color:var(--rouge);">0</div>
-          <div class="libelle-stat">non pointés</div>
+          <div class="libelle-stat">non pointés, sans motif</div>
+        </div>
+        <div class="carte carte-stat">
+          <div class="entete-carte-stat">
+            <span class="badge badge-bleu">Absences</span>
+            <div class="icone-carte-stat" style="background:var(--bleu-clair);">🗓️</div>
+          </div>
+          <div class="valeur-stat" id="stat-absences" style="color:var(--bleu);">0</div>
+          <div class="libelle-stat">maladie, congé, formation…</div>
         </div>
         <div class="carte carte-stat">
           <div class="entete-carte-stat">
@@ -376,6 +385,62 @@
       </div>
     </div>
 
+    <!-- ONGLET : ABSENCES -->
+    <div id="onglet-absences" class="panneau-onglet">
+      <div class="disposition-zones">
+        <div>
+          <div class="entete-section" style="margin-bottom:14px;">
+            <div class="titre-section">Absences</div>
+            <select class="champ-liste" id="filtre-absences" style="width:auto;min-width:210px;" onchange="afficherAbsences()">
+              <option value="actuelles">En cours et à venir</option>
+              <option value="toutes">Toutes (historique)</option>
+            </select>
+          </div>
+          <div id="liste-absences" class="liste-zones"></div>
+        </div>
+        <div>
+          <div class="carte carte-ajout-zone">
+            <div class="titre-ajout-zone" id="titre-ajout-absence">➕ Encoder une absence</div>
+            <div class="grille-formulaire">
+              <div class="champ">
+                <label class="libelle-champ">Ouvrier</label>
+                <select class="champ-liste" id="absence-ouvrier"></select>
+              </div>
+              <div class="champ">
+                <label class="libelle-champ">Motif</label>
+                <select class="champ-liste" id="absence-type">
+                  <option value="maladie">🤒 Maladie</option>
+                  <option value="conge">🏖️ Congé</option>
+                  <option value="recuperation">🔄 Récupération</option>
+                  <option value="formation">🎓 Formation</option>
+                  <option value="accident">🚑 Accident de travail</option>
+                  <option value="a_justifier">❓ Absence à justifier</option>
+                </select>
+              </div>
+              <div class="champ">
+                <label class="libelle-champ">Du</label>
+                <input type="date" id="absence-du" onchange="synchroniserDatesAbsence()">
+              </div>
+              <div class="champ">
+                <label class="libelle-champ">Au (inclus)</label>
+                <input type="date" id="absence-au">
+                <span class="astuce-formulaire">Pour un seul jour, laissez la même date</span>
+              </div>
+              <div class="champ">
+                <label class="libelle-champ">Commentaire (facultatif)</label>
+                <input type="text" id="absence-commentaire" placeholder="ex: certificat médical reçu">
+              </div>
+              <button class="bouton bouton-primaire" onclick="enregistrerAbsence()" id="bouton-enregistrer-absence" style="margin-top:4px;">Enregistrer l'absence</button>
+              <button class="bouton bouton-fantome bouton-petit" onclick="reinitialiserFormulaireAbsence()" id="bouton-annuler-modif-absence" style="display:none;">
+                Annuler la modification
+              </button>
+              <span class="astuce-formulaire">Une « absence à justifier » peut être requalifiée plus tard (ex. en maladie) via « Modifier ».</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ONGLET : RAPPORTS -->
     <div id="onglet-rapports" class="panneau-onglet">
       <div class="controles-rapport">
@@ -413,6 +478,27 @@
           </thead>
           <tbody id="corps-totaux-zone">
             <tr><td colspan="4" style="text-align:center;padding:32px;color:var(--texte-3);">Sélectionnez une période et cliquez sur Générer</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="entete-section" style="margin:28px 0 14px;">
+        <div class="titre-section">Absences</div>
+      </div>
+      <div class="conteneur-tableau-rapport">
+        <table class="tableau-rapport" id="tableau-absences-rapport">
+          <thead>
+            <tr>
+              <th>Ouvrier</th>
+              <th>Motif</th>
+              <th>Du</th>
+              <th>Au</th>
+              <th>Jours ouvrables</th>
+              <th>Commentaire</th>
+            </tr>
+          </thead>
+          <tbody id="corps-absences-rapport">
+            <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--texte-3);">Sélectionnez une période et cliquez sur Générer</td></tr>
           </tbody>
         </table>
       </div>
