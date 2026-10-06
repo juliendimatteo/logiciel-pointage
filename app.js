@@ -1477,6 +1477,8 @@ const TYPES_ABSENCE = {
   recuperation: { libelle: 'Récupération',        icone: '🔄', badge: 'badge-bleu',  excel: 'FF0F766E' },
   formation:    { libelle: 'Formation',           icone: '🎓', badge: 'badge-vert',  excel: 'FF15803D' },
   accident:     { libelle: 'Accident de travail', icone: '🚑', badge: 'badge-rouge', excel: 'FFB91C1C' },
+  chomage_economique:  { libelle: 'Chômage économique',  icone: '📉', badge: 'badge-gris', excel: 'FF475569' },
+  chomage_intemperies: { libelle: 'Chômage intempéries', icone: '🌧️', badge: 'badge-gris', excel: 'FF475569' },
   a_justifier:  { libelle: 'Absence à justifier', icone: '❓', badge: 'badge-ambre', excel: 'FFD97706' },
 };
 const typeAbsence = type => TYPES_ABSENCE[type] || { libelle: type, icone: '•', badge: 'badge-gris', excel: 'FF475569' };

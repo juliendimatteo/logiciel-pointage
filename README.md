@@ -22,7 +22,8 @@ les appareils via Firebase Firestore.
 - Gestion des zones de chantier (nom, adresse ou coordonnées GPS, rayon)
 - Onglet **Absences** : encoder pour un ouvrier, sur un jour ou une période,
   une absence motivée — maladie, congé, récupération, formation, accident de
-  travail ou absence à justifier (requalifiable ensuite via « Modifier ») —
+  travail, chômage économique, chômage intempéries ou absence à
+  justifier (requalifiable ensuite via « Modifier ») —
   avec commentaire facultatif ; les chevauchements sont refusés. L'absence
   apparaît sur la carte de l'ouvrier dans la vue d'ensemble (compteur dédié,
   distinct des absents « non pointés »)
