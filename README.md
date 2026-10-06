@@ -117,6 +117,12 @@ nécessaire (accès à Firestore).
 
 ## Notes
 
+- **À chaque modification de `app.js` ou `style.css`**, incrémenter le
+  paramètre de version (`?v=…`) dans `index.html` et le nom du cache dans
+  `service-worker.js` : la page et son script sont ainsi toujours rechargés
+  ensemble (sinon le cache du navigateur peut associer une page à jour à un
+  script périmé).
+
 - Le GPS du navigateur est requis pour pointer ; sans autorisation de
   localisation (ou en cas d'échec), le pointage est bloqué avec un message
   explicite plutôt que d'utiliser une position simulée.
