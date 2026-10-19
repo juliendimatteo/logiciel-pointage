@@ -217,6 +217,12 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
   letter-spacing: -.3px;
 }
 .nom-logo-connexion span { color: var(--bleu); }
+.societe-connexion { font-size: 17px; color: var(--texte); }
+.societe-connexion small {
+  font-family: var(--police-texte); font-size: 12px; font-weight: 700;
+  letter-spacing: .3em; color: var(--texte-2);
+}
+.icone-logo-connexion, .icone-logo-en-tete { flex-shrink: 0; }
 
 .carte-connexion {
   padding: 32px;
@@ -301,6 +307,12 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
   display: flex; align-items: center; justify-content: center;
 }
 .icone-logo-en-tete svg { width: 16px; height: 16px; color: #fff; }
+.nom-en-tete { display: flex; flex-direction: column; line-height: 1.15; white-space: nowrap; }
+.nom-en-tete small {
+  font-family: var(--police-texte); font-size: 9px; font-weight: 700;
+  letter-spacing: .3em; color: var(--texte-2);
+}
+@media (max-width: 600px) { .produit-en-tete { display: none; } }
 .espaceur-en-tete { flex: 1; }
 .utilisateur-en-tete {
   display: flex; align-items: center; gap: 10px;
