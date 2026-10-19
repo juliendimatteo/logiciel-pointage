@@ -1,4 +1,4 @@
-const CACHE = 'pointagepro-dmd-v5';
+const CACHE = 'pointagepro-dmd-v6';
 const FICHIERS_SHELL = [
   './',
   './index.html',
