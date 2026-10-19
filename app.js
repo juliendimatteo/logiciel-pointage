@@ -362,9 +362,16 @@ async function effectuerAutoDepointage() {
 const INTERVALLE_VERIFICATION_RETARD_MS = 5 * 60 * 1000;
 let minuteurVerificationRetard = null;
 
-function positionHorsZone(position) {
-  const resultat = GPS.zoneLaPlusProche(position.lat, position.lng);
-  return !resultat || !resultat.dansZone;
+// Marge de sécurité : une dernière position juste au bord du chantier
+// (parking, conteneur, dérive GPS de quelques dizaines de mètres) suivie
+// d'un téléphone mis en veille ne prouve pas un départ. On n'en conclut une
+// sortie que si cette position est loin de TOUTES les zones (au-delà de
+// FACTEUR_MARGE_AUTO_DEPOINTAGE fois leur rayon).
+const FACTEUR_MARGE_AUTO_DEPOINTAGE = 2;
+
+function positionNettementHorsZone(position) {
+  return !Stockage.donnees.zones.some(z =>
+    distanceGeo(position.lat, position.lng, z.lat, z.lng) <= z.rayon * FACTEUR_MARGE_AUTO_DEPOINTAGE);
 }
 
 async function verifierPointagesEnRetard() {
@@ -380,7 +387,7 @@ async function verifierPointagesEnRetard() {
     if (new Date(position.horodatage) <= new Date(dernier.horodatage)) continue;
     const age = maintenant - new Date(position.horodatage).getTime();
     if (age < DELAI_AUTO_DEPOINTAGE_MS) continue;
-    if (!positionHorsZone(position)) continue; // dernière position connue toujours dans la zone : on ne peut pas conclure
+    if (!positionNettementHorsZone(position)) continue; // dernière position connue dans la zone ou à son bord : on ne peut pas conclure
     try {
       await db.collection('pointages').doc(genererId()).set({
         idOuvrier: o.id,
