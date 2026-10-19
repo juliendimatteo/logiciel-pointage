@@ -1,4 +1,4 @@
-const CACHE = 'pointagepro-dmd-v4';
+const CACHE = 'pointagepro-dmd-v5';
 const FICHIERS_SHELL = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const FICHIERS_SHELL = [
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './logo.png',
 ];
 
 self.addEventListener('install', event => {
