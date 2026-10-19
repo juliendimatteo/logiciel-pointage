@@ -13,7 +13,8 @@ les appareils via Firebase Firestore.
 - Alerte si la position GPS ne correspond plus au statut de pointage
 - Historique des pointages du jour
 
-**Gestionnaire** (accès protégé par mot de passe, par compte nommé)
+**Gestionnaire** (connexion par adresse e-mail et mot de passe, compte
+Firebase Authentication nominatif)
 - Vue d'ensemble en temps réel : ouvriers présents / absents / hors zone,
   mis à jour instantanément dès qu'un ouvrier pointe depuis son appareil
 - Carte en direct (Leaflet / OpenStreetMap) : position des ouvriers
@@ -37,9 +38,10 @@ les appareils via Firebase Firestore.
   ouvrables (lun.–ven.) ; export Excel (.xlsx) mis en forme sur trois
   feuilles (totaux, pointages, absences)
 - Onglet **Comptes** (réservé à l'administrateur) : autoriser l'accès
-  gestionnaire à un tiers (ex. secrétaire) sous un nom dédié, avec son propre
-  mot de passe ; désactiver, réinitialiser le mot de passe ou supprimer un
-  accès à tout moment
+  gestionnaire à un tiers (ex. secrétaire) avec son nom et son adresse
+  e-mail — la personne reçoit un e-mail pour choisir elle-même son mot de
+  passe ; désactiver (effet immédiat, y compris sur une session ouverte),
+  lui renvoyer un lien de mot de passe ou supprimer un accès à tout moment
 
 **Installable comme une application (PWA)** — depuis le navigateur mobile,
 « Ajouter à l'écran d'accueil » (Android) ou Partager → « Sur l'écran
@@ -62,42 +64,60 @@ Les absences sont stockées dans la collection `absences` (un document par
 absence : `idOuvrier`, `type`, `du`, `au` au format `AAAA-MM-JJ` bornes
 incluses, `commentaire`, `creePar`/`creeLe`, `modifiePar`/`modifieLe`).
 
-Les comptes gestionnaire (nom, mot de passe haché SHA-256, statut
-administrateur/actif) sont stockés dans Firestore (collection `comptes`),
-partagés entre tous les appareils : un accès créé ou révoqué par
-l'administrateur prend effet pour tout le monde. Seule la session de
-connexion (qui est actuellement connecté sur cet appareil) reste en local
-(`localStorage`).
+Les gestionnaires se connectent avec un compte **Firebase Authentication**
+(e-mail + mot de passe ; Firebase gère le stockage du mot de passe, les
+e-mails de réinitialisation et la limitation des tentatives). Chaque compte
+est rattaché à un document `comptes/{uid}` (`nom`, `email`, `admin`,
+`actif`) qui donne le droit d'accès : sans document actif, la connexion
+est refusée. Les ouvriers, eux, n'ont pas de mot de passe : l'app ouvre une
+session Firebase **anonyme** et ils choisissent leur nom dans la liste.
 
-**Limite assumée** : l'application se connecte à Firebase en anonyme
-(site 100% statique, sans serveur), Firestore ne sait donc pas qui est
-gestionnaire, administrateur ou ouvrier. Les règles de `firestore.rules`
-n'acceptent que des documents ayant exactement la forme écrite par l'app et
-que les modifications qu'elle effectue réellement (un compte ne peut jamais
-devenir administrateur, un mot de passe déjà défini ne peut pas être
-remplacé, le compte administrateur ne peut être ni désactivé ni supprimé,
-un pointage existant ne peut changer que d'heure…). Elles ne distinguent
-pas en revanche les rôles : la collection `comptes` (empreintes comprises)
-reste lisible, et la distinction administrateur/accès simple n'est
-appliquée que côté interface. Cela empêche un usage normal inapproprié et
-les écritures incohérentes, mais pas un utilisateur déterminé à inspecter
-le code ou la base Firestore directement.
+Les règles de [`firestore.rules`](firestore.rules) s'appuient sur cette
+distinction :
+- **ouvrier (anonyme)** : lire les ouvriers, les zones et les pointages,
+  pointer (pas de pointage manuel ni de sortie forcée), envoyer et
+  supprimer sa position. Pas d'accès aux absences, aux positions des
+  autres ni aux comptes ;
+- **gestionnaire (compte actif)** : tout le reste (ouvriers, zones,
+  absences, correction/suppression de pointages, carte en direct) ;
+- **administrateur** : en plus, gestion des accès gestionnaire.
+
+Les documents doivent en outre avoir exactement la forme écrite par l'app
+(champs, types, valeurs autorisées), et seules les modifications qu'elle
+effectue réellement sont acceptées (un pointage existant ne peut changer
+que d'heure, un compte ne peut pas devenir administrateur, etc.).
+
+**Limites restantes** : un ouvrier n'étant pas authentifié individuellement,
+n'importe quelle session anonyme peut lire les pointages (y compris leurs
+coordonnées GPS) et pointer au nom de n'importe quel ouvrier. Comme seules
+les sessions gestionnaire peuvent lire les positions, l'auto-dépointage par
+surveillance passive ne s'exécute plus que dans ces sessions.
 
 ### Configuration Firebase requise
 
 Dans la console Firebase du projet :
 1. **Firestore Database** activée
-2. **Authentication → Sign-in method → Anonymous** activé (l'app se connecte
-   anonymement pour respecter les règles de sécurité Firestore)
+2. **Authentication → Sign-in method** : activer **Anonymous** (ouvriers)
+   et **Email/Password** (gestionnaires)
 3. **Règles Firestore** (onglet Rules) : copier le contenu du fichier
    [`firestore.rules`](firestore.rules) puis **Publier**. À republier à
    chaque modification de ce fichier (nouveau champ, nouveau type
    d'absence…), sinon les écritures correspondantes seront refusées.
-4. **Premier compte administrateur** : les règles interdisent de créer un
-   compte administrateur depuis l'app. Sur une base neuve, créer dans la
-   collection `comptes` un document avec `nom` = `"Administrateur"`,
-   `empreinte` = `null`, `admin` = `true`, `actif` = `true` ; le mot de
-   passe sera défini à la première connexion.
+4. **Premier administrateur** : sur une base sans administrateur, l'écran
+   de connexion « Gestionnaire » propose de le créer — l'adresse e-mail et
+   le mot de passe saisis deviennent ceux de l'administrateur. Cette
+   création n'est possible qu'une seule fois (document
+   `meta/administration`) : la faire immédiatement après la mise en ligne.
+5. *(facultatif)* **Authentication → Templates** : personnaliser l'e-mail
+   de réinitialisation du mot de passe (envoyé en français).
+
+**Migration depuis les anciens comptes (mot de passe haché)** : après la
+mise en ligne de cette version, ouvrir l'app, choisir « Gestionnaire » et
+créer le compte administrateur (étape 4), puis dans l'onglet Comptes
+supprimer les anciens accès (marqués « Ancien accès ») et les recréer avec
+une adresse e-mail. Un accès supprimé garde son utilisateur dans
+Authentication (sans aucun droit) : pour recréer un accès avec la même
+adresse, supprimer d'abord cet utilisateur dans la console.
 
 La configuration du projet (`firebaseConfig`) est en clair dans `app.js` —
 c'est normal pour une app web Firebase, la clé n'est pas un secret : la
@@ -135,8 +155,9 @@ nécessaire (accès à Firestore).
 - Le GPS du navigateur est requis pour pointer ; sans autorisation de
   localisation (ou en cas d'échec), le pointage est bloqué avec un message
   explicite plutôt que d'utiliser une position simulée.
-- Au tout premier lancement (base Firestore vide), un jeu de données
-  d'exemple (ouvriers, zones, pointages) est créé automatiquement.
+- À la première connexion d'un gestionnaire sur une base Firestore vide, un
+  jeu de données d'exemple (ouvriers, zones, pointages) est créé
+  automatiquement.
 - Tant qu'un ouvrier est connecté avec son statut « Présent », son
   application envoie sa position toutes les ~20 secondes (collection
   Firestore `positions`) pour alimenter la carte en direct du gestionnaire ;

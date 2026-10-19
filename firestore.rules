@@ -2,21 +2,44 @@ rules_version = '2';
 
 // Règles Firestore de PointagePro.
 //
-// L'application se connecte en anonyme : Firestore ne sait donc pas qui est
-// gestionnaire, administrateur ou ouvrier. Ces règles ne peuvent pas filtrer
-// par rôle ; elles se limitent à :
-//   - refuser tout ce qui n'est pas explicitement prévu (collections inconnues) ;
-//   - n'accepter que des documents ayant exactement la forme écrite par l'app ;
-//   - n'autoriser que les modifications que l'app effectue réellement
-//     (ex. un pointage existant ne peut changer que d'heure, un compte ne
-//     peut jamais devenir administrateur).
+// Deux sortes d'utilisateurs Firebase :
+//   - ouvriers : session anonyme (aucun mot de passe). Ils peuvent lire la
+//     liste des ouvriers, les zones et les pointages, pointer, et envoyer
+//     leur position. Rien d'autre.
+//   - gestionnaires : compte e-mail/mot de passe Firebase Auth, rattaché à
+//     un document comptes/{uid} actif. L'administrateur (admin == true) gère
+//     en plus les accès gestionnaire.
+// Tout ce qui n'est pas explicitement prévu est refusé, et les documents
+// doivent avoir exactement la forme écrite par l'app.
 // À mettre à jour en même temps que app.js si la forme des données change.
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    /* ─── Qui est connecté ─── */
+
     function connecte() {
       return request.auth != null;
     }
+
+    function compteEmail() {
+      return connecte() && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    function cheminCompte(uid) {
+      return /databases/$(database)/documents/comptes/$(uid);
+    }
+
+    function gestionnaire() {
+      return compteEmail()
+        && exists(cheminCompte(request.auth.uid))
+        && get(cheminCompte(request.auth.uid)).data.actif == true;
+    }
+
+    function administrateur() {
+      return gestionnaire() && get(cheminCompte(request.auth.uid)).data.admin == true;
+    }
+
+    /* ─── Validation des valeurs ─── */
 
     function texte(v, max) {
       return v is string && v.size() > 0 && v.size() <= max;
@@ -44,29 +67,35 @@ service cloud.firestore {
       return v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
     }
 
-    // Empreinte SHA-256 en hexadécimal (ou null = mot de passe pas encore défini)
-    function empreinteValide(v) {
-      return v == null || (v is string && v.matches('^[0-9a-f]{64}$'));
+    function email(v) {
+      return v is string && v.size() <= 200 && v.matches('^[^@ ]+@[^@ ]+$');
     }
-
-    // Tout le reste est refusé par défaut.
 
     /* ─── meta/etat : indicateur « données de démo déjà créées » ─── */
     match /meta/etat {
       allow read: if connecte();
-      allow create: if connecte() && request.resource.data == { 'initialise': true };
-      allow update, delete: if false;
+      allow create: if gestionnaire() && request.resource.data == { 'initialise': true };
+    }
+
+    /* ─── meta/administration : existe dès que le premier administrateur
+           a été créé. Lisible par tous pour que l'écran de connexion sache
+           s'il doit proposer la création de ce compte. ─── */
+    match /meta/administration {
+      allow read: if connecte();
+      // Créé uniquement dans le même lot que le compte du premier administrateur
+      allow create: if compteEmail()
+        && request.resource.data == { 'premierAdministrateur': request.auth.uid }
+        && getAfter(cheminCompte(request.auth.uid)).data.admin == true;
     }
 
     /* ─── ouvriers ─── */
     match /ouvriers/{id} {
       allow read: if connecte();
-      allow create: if connecte()
+      allow create: if gestionnaire()
         && request.resource.data.keys().hasOnly(['nom', 'metier'])
         && texte(request.resource.data.nom, 100)
         && texte(request.resource.data.metier, 100);
-      allow update: if false;
-      allow delete: if connecte();
+      allow delete: if gestionnaire();
     }
 
     /* ─── zones de chantier ─── */
@@ -80,8 +109,8 @@ service cloud.firestore {
 
     match /zones/{id} {
       allow read: if connecte();
-      allow create, update: if connecte() && zoneValide(request.resource.data);
-      allow delete: if connecte();
+      allow create, update: if gestionnaire() && zoneValide(request.resource.data);
+      allow delete: if gestionnaire();
     }
 
     /* ─── pointages ─── */
@@ -105,18 +134,23 @@ service cloud.firestore {
     }
 
     match /pointages/{id} {
+      // Lu par les ouvriers pour connaître leur statut et leur historique
       allow read: if connecte();
-      allow create: if connecte() && pointageValide(request.resource.data);
+      // Un ouvrier pointe (ou est dépointé automatiquement) ; seule la
+      // direction peut forcer une sortie ou saisir un pointage manuel.
+      allow create: if pointageValide(request.resource.data)
+        && (gestionnaire()
+            || (connecte() && !request.resource.data.keys().hasAny(['forcee', 'manuel', 'motifManuel', 'encodePar', 'encodeLe'])));
       // Seule l'heure d'un pointage existant peut être corrigée
-      allow update: if connecte()
+      allow update: if gestionnaire()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['horodatage'])
         && horodatage(request.resource.data.horodatage);
-      allow delete: if connecte();
+      allow delete: if gestionnaire();
     }
 
     /* ─── positions GPS en direct (un document par ouvrier) ─── */
     match /positions/{idOuvrier} {
-      allow read: if connecte();
+      allow read: if gestionnaire();
       allow create, update: if connecte()
         && request.resource.data.keys().hasOnly(['lat', 'lng', 'horodatage'])
         && request.resource.data.lat is number
@@ -139,44 +173,51 @@ service cloud.firestore {
     }
 
     match /absences/{id} {
-      allow read: if connecte();
-      allow create: if connecte()
+      allow read: if gestionnaire();
+      allow create: if gestionnaire()
         && absenceValide(request.resource.data)
         && texte(request.resource.data.creePar, 100)
         && horodatage(request.resource.data.creeLe);
       // L'auteur et la date de création restent figés
-      allow update: if connecte()
+      allow update: if gestionnaire()
         && absenceValide(request.resource.data)
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['creePar', 'creeLe'])
         && texte(request.resource.data.modifiePar, 100)
         && horodatage(request.resource.data.modifieLe);
-      allow delete: if connecte();
+      allow delete: if gestionnaire();
     }
 
-    /* ─── comptes gestionnaire ─── */
-    match /comptes/{id} {
-      // Lecture nécessaire à l'écran de connexion (vérification du mot de passe côté client)
-      allow read: if connecte();
-      // Nouvel accès : jamais administrateur. Le tout premier compte
-      // administrateur se crée depuis la console Firebase (voir README).
-      allow create: if connecte()
-        && request.resource.data.keys().hasOnly(['nom', 'empreinte', 'admin', 'actif'])
-        && texte(request.resource.data.nom, 100)
-        && request.resource.data.empreinte == null
-        && request.resource.data.admin == false
-        && request.resource.data.actif == true;
-      // Seuls « actif » et le mot de passe peuvent changer ; le nom et le
-      // statut administrateur sont figés. Un mot de passe déjà défini ne peut
-      // pas être remplacé directement, seulement réinitialisé (null).
-      allow update: if connecte()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['empreinte', 'actif'])
-        && request.resource.data.actif is bool
-        && empreinteValide(request.resource.data.empreinte)
-        && (resource.data.empreinte == null || request.resource.data.empreinte == null)
-        // Un compte administrateur ne peut pas être désactivé
-        && (!resource.data.admin || request.resource.data.actif == true);
-      // Un compte administrateur ne peut pas être supprimé
-      allow delete: if connecte() && resource.data.admin != true;
+    /* ─── comptes gestionnaire (identifiant du document = uid Firebase) ─── */
+    match /comptes/{uid} {
+      // Chacun lit son propre compte (vérification à la connexion) ;
+      // l'administrateur lit la liste complète.
+      allow get: if connecte() && request.auth.uid == uid;
+      allow read: if administrateur();
+
+      allow create: if
+        // Nouvel accès gestionnaire créé par l'administrateur
+        (administrateur()
+          && request.resource.data.keys().hasOnly(['nom', 'email', 'admin', 'actif'])
+          && texte(request.resource.data.nom, 100)
+          && email(request.resource.data.email)
+          && request.resource.data.admin == false
+          && request.resource.data.actif == true)
+        // Premier administrateur, sur une base neuve : uniquement pour
+        // soi-même et une seule fois (meta/administration créé dans le même lot)
+        || (compteEmail()
+          && request.auth.uid == uid
+          && !exists(/databases/$(database)/documents/meta/administration)
+          && existsAfter(/databases/$(database)/documents/meta/administration)
+          && request.resource.data == { 'nom': 'Administrateur', 'email': request.auth.token.email,
+                                        'admin': true, 'actif': true });
+
+      // L'administrateur active/désactive les autres accès
+      allow update: if administrateur()
+        && request.auth.uid != uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['actif'])
+        && request.resource.data.actif is bool;
+
+      allow delete: if administrateur() && request.auth.uid != uid;
     }
   }
 }
