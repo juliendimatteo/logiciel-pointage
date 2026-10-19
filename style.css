@@ -213,6 +213,16 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
   letter-spacing: -.3px;
 }
 .nom-logo-connexion span { color: var(--bleu); }
+.logo-societe-connexion { flex-direction: column; gap: 14px; }
+.image-logo-connexion {
+  display: block; width: 100%; max-width: 260px; height: auto;
+  border-radius: var(--rayon-lg);
+}
+/* En sombre, le gris de « DEMOLITION » disparaît sur le fond : on pose le logo sur une plaque blanche. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .image-logo-connexion { background: #fff; padding: 12px 16px; }
+}
+[data-theme="dark"] .image-logo-connexion { background: #fff; padding: 12px 16px; }
 
 .carte-connexion {
   padding: 32px;
@@ -572,7 +582,7 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
   box-shadow: var(--ombre-lg);
 }
 .titre-dialogue { font-family: var(--police-titre); font-size: 18px; font-weight: 700; margin-bottom: 8px; }
-.corps-dialogue { font-size: 14px; color: var(--texte-2); margin-bottom: 20px; }
+.corps-dialogue { font-size: 14px; color: var(--texte-2); margin-bottom: 20px; white-space: pre-line; max-height: 50vh; overflow-y: auto; }
 .actions-dialogue { display: flex; gap: 8px; justify-content: flex-end; }
 
 /* Carte en direct */

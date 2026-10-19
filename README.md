@@ -143,6 +143,8 @@ nécessaire (accès à Firestore).
 - `manifest.json`, `service-worker.js`, `icons/` — installation en PWA
 - `firestore.rules` — règles de sécurité Firestore (à publier dans la console Firebase)
 - `.github/workflows/pages.yml` — déploiement automatique sur GitHub Pages
+- `dmd/` — copie indépendante de l'application pour l'équipe DMD (propre
+  projet Firebase, voir `dmd/README.md`)
 
 ## Notes
 
@@ -159,6 +161,11 @@ nécessaire (accès à Firestore).
   jeu de données d'exemple (ouvriers, zones, pointages) est créé
   automatiquement.
 - Tant qu'un ouvrier est connecté avec son statut « Présent », son
-  application envoie sa position toutes les ~20 secondes (collection
+  application envoie sa position toutes les minutes environ (collection
   Firestore `positions`) pour alimenter la carte en direct du gestionnaire ;
   cette position est supprimée dès qu'il se déconnecte.
+- **Quota Firestore** (plan gratuit : 50 000 lectures/jour, chaque document
+  reçu compte) : l'app n'écoute en direct que les pointages depuis la veille ;
+  les rapports chargent leur période à la demande, et seule la session
+  gestionnaire écoute les positions en continu. Ne pas réintroduire d'écoute
+  de toute la collection `pointages`, qui grossit chaque jour.

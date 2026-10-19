@@ -1,4 +1,4 @@
-const CACHE = 'pointagepro-v6';
+const CACHE = 'pointagepro-v10';
 const FICHIERS_SHELL = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const FICHIERS_SHELL = [
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './logo.png',
 ];
 
 self.addEventListener('install', event => {
@@ -16,7 +17,7 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(cles => Promise.all(cles.filter(c => c !== CACHE).map(c => caches.delete(c))))
+    caches.keys().then(cles => Promise.all(cles.filter(c => !c.startsWith('pointagepro-dmd-') && c !== CACHE).map(c => caches.delete(c))))
   );
   self.clients.claim();
 });
@@ -30,6 +31,8 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   if (request.method !== 'GET') return;
   if (new URL(request.url).origin !== self.location.origin) return;
+  // L'application DMD (sous-dossier dmd/) a son propre service worker et son propre cache.
+  if (new URL(request.url).pathname.startsWith(new URL('./dmd/', self.location).pathname)) return;
 
   event.respondWith(
     fetch(request.url, { cache: 'no-cache', credentials: 'same-origin' })

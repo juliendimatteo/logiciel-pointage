@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 
@@ -102,13 +102,9 @@
 <div id="vue-connexion" class="vue">
   <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;">
     <div class="boite-connexion">
-      <div class="logo-connexion">
-        <div class="icone-logo-connexion">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
-          </svg>
-        </div>
-        <div class="nom-logo-connexion">Pointage<span>Pro</span> DI MATTEO</div>
+      <div class="logo-connexion logo-societe-connexion">
+        <img src="logo.png" alt="Di Matteo Démolition" class="image-logo-connexion">
+        <div class="nom-logo-connexion">Pointage<span>Pro</span></div>
       </div>
       <div class="carte-connexion">
         <div class="titre-connexion">Connexion</div>
@@ -511,6 +507,7 @@
         <button class="bouton bouton-primaire" onclick="genererRapport()">Générer</button>
         <button class="bouton bouton-fantome" onclick="ouvrirPointageManuel($('rapport-ouvrier').value)">✍️ Ajouter un pointage</button>
         <button class="bouton bouton-fantome" onclick="exporterExcel()" id="bouton-export" style="display:none;">⬇ Exporter Excel</button>
+        <button class="bouton bouton-fantome" onclick="nettoyerSortiesAutomatiques()" id="bouton-nettoyer-auto" style="display:none;" title="Supprimer les sorties automatiques en double ou sans entrée le même jour">🧹 Nettoyer les doublons</button>
       </div>
       <div class="entete-section" style="margin:24px 0 14px;">
         <div class="titre-section">Totaux par jour et par zone</div>
@@ -612,7 +609,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=10"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js').catch(() => {}));

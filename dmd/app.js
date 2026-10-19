@@ -1,0 +1,2171 @@
+/* ═══════════════════════════════════════════════════════════
+   UTILITAIRES
+═══════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const formater = (d, options) => new Date(d).toLocaleString('fr-BE', options);
+const formaterDate = d => formater(d, {day:'2-digit',month:'long',year:'numeric'});
+const formaterDateCourte = d => formater(d, {day:'2-digit',month:'2-digit',year:'numeric'});
+const formaterHeure = d => formater(d, {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+const formaterHeureCourte = d => formater(d, {hour:'2-digit',minute:'2-digit'});
+const dateLocale = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const dateAujourdhui = () => dateLocale(new Date());
+const jourLocalDe = horodatage => dateLocale(new Date(horodatage));
+const dateDepuisLocale = jour => { const [a,m,j] = jour.split('-').map(Number); return new Date(a, m-1, j); };
+const genererId = () => Math.random().toString(36).slice(2,10);
+const echapperHtml = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function distanceGeo(lat1, lon1, lat2, lon2) {
+  const R = 6371000, versRad = d => d * Math.PI / 180;
+  const dLat = versRad(lat2-lat1), dLon = versRad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(versRad(lat1))*Math.cos(versRad(lat2))*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function capGeo(lat1, lon1, lat2, lon2) {
+  const versRad = d => d * Math.PI / 180;
+  const dLon = versRad(lon2-lon1);
+  const y = Math.sin(dLon)*Math.cos(versRad(lat2));
+  const x = Math.cos(versRad(lat1))*Math.sin(versRad(lat2)) - Math.sin(versRad(lat1))*Math.cos(versRad(lat2))*Math.cos(dLon);
+  return (Math.atan2(y,x)*180/Math.PI + 360) % 360;
+}
+function formaterDuree(ms) {
+  if (ms < 0) return '—';
+  const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000);
+  return h > 0 ? `${h}h${m.toString().padStart(2,'0')}` : `${m}min`;
+}
+function formaterDistance(m) {
+  return m >= 1000 ? `${(m/1000).toFixed(1)} km` : `${Math.round(m)} m`;
+}
+function initiales(nom) {
+  return nom.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+}
+const COULEURS_AVATAR = ['#1D4ED8','#7C3AED','#DB2777','#D97706','#15803D','#0F766E','#B91C1C','#6D28D9'];
+function couleurAvatar(nom) {
+  let h = 0; for (const c of nom) h = (h*31+c.charCodeAt(0)) & 0xFFFFFF;
+  return COULEURS_AVATAR[Math.abs(h) % COULEURS_AVATAR.length];
+}
+
+function modeSombreActif() {
+  const t = document.documentElement.dataset.theme;
+  if (t === 'dark') return true; if (t === 'light') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BASE DE DONNÉES PARTAGÉE (FIREBASE)
+═══════════════════════════════════════════════════════════ */
+// Projet Firebase propre à DMD (données totalement séparées de DI MATTEO).
+// À remplir avec la configuration de l'application web du projet Firebase DMD
+// (console Firebase → Paramètres du projet → Vos applications → Config).
+const firebaseConfig = {
+  apiKey: "AIzaSyApNnOkszLEWk-RGzhOy0FzJlOmG0dXCmw",
+  authDomain: "pointage-pro-dmd.firebaseapp.com",
+  projectId: "pointage-pro-dmd",
+  storageBucket: "pointage-pro-dmd.firebasestorage.app",
+  messagingSenderId: "970219814166",
+  appId: "1:970219814166:web:709f69c958311ef70ae437"
+};
+if (!firebaseConfig.projectId) {
+  document.body.innerHTML = '<p style="font-family:sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;line-height:1.5">'
+    + '<strong>PointagePro DMD n\u2019est pas encore configuré.</strong><br>'
+    + 'Renseignez la configuration du projet Firebase DMD (<code>firebaseConfig</code>) dans <code>dmd/app.js</code>.</p>';
+  throw new Error('firebaseConfig DMD manquant');
+}
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const Stockage = {
+  donnees: { ouvriers: [], zones: [], pointages: [], positions: [], comptes: [], absences: [] },
+
+  async initialiserFirestore() {
+    const maintenant = new Date();
+    const t = (h,m) => { const d=new Date(maintenant); d.setHours(h,m,0,0); return d.toISOString(); };
+
+    const ouvriers = [
+      { id:'o1', nom:'Jean Dupont',    metier:'Maçon' },
+      { id:'o2', nom:'Marc Laurent',   metier:'Électricien' },
+      { id:'o3', nom:'Sophie Renard',  metier:'Chef de chantier' },
+      { id:'o4', nom:'Pierre Lecomte', metier:'Peintre' },
+      { id:'o5', nom:'Nadia Bouchard', metier:'Plombier' },
+    ];
+    const zones = [
+      { id:'z1', nom:'Chantier Bruxelles Centre', lat:50.8503, lng:4.3517, rayon:150 },
+      { id:'z2', nom:'Dépôt Anderlecht',          lat:50.8366, lng:4.3142, rayon:200 },
+    ];
+    // Pointages du jour
+    const pointages = [
+      { id:genererId(), idOuvrier:'o1', type:'entree', lat:50.8505, lng:4.3520, horodatage:t(7,35), idZone:'z1', dansZone:true },
+      { id:genererId(), idOuvrier:'o2', type:'entree', lat:50.8501, lng:4.3515, horodatage:t(7,50), idZone:'z1', dansZone:true },
+      { id:genererId(), idOuvrier:'o2', type:'sortie', lat:50.8503, lng:4.3518, horodatage:t(12,5),  idZone:'z1', dansZone:true },
+      { id:genererId(), idOuvrier:'o2', type:'entree', lat:50.8502, lng:4.3516, horodatage:t(12,45), idZone:'z1', dansZone:true },
+      { id:genererId(), idOuvrier:'o3', type:'entree', lat:50.8365, lng:4.3140, horodatage:t(8,10), idZone:'z2', dansZone:true },
+      { id:genererId(), idOuvrier:'o4', type:'entree', lat:50.8490, lng:4.3600, horodatage:t(9,0),  idZone:null,  dansZone:false },
+      { id:genererId(), idOuvrier:'o4', type:'sortie', lat:50.8490, lng:4.3600, horodatage:t(11,30),idZone:null,  dansZone:false },
+    ];
+
+    const batch = db.batch();
+    ouvriers.forEach(({id, ...data}) => batch.set(db.collection('ouvriers').doc(id), data));
+    zones.forEach(({id, ...data}) => batch.set(db.collection('zones').doc(id), data));
+    pointages.forEach(({id, ...data}) => batch.set(db.collection('pointages').doc(id), data));
+    batch.set(db.collection('meta').doc('etat'), { initialise: true });
+    await batch.commit();
+  }
+};
+
+let verificationInitialisationFaite = false;
+
+async function verifierEtInitialiserDonnees() {
+  // Indicateur permanent et partagé : une fois posé, la démo ne revient plus
+  // jamais, même si tous les ouvriers/zones sont ensuite supprimés.
+  const refEtat = db.collection('meta').doc('etat');
+  const docEtat = await refEtat.get();
+  if (docEtat.exists) return;
+  await Stockage.initialiserFirestore();
+}
+
+let syncOuvriersPrete = false;
+let syncZonesPrete = false;
+let syncComptesPrete = false;
+
+function donneesEssentiellesChargees() {
+  return syncOuvriersPrete && syncZonesPrete;
+}
+
+function demarrerSynchronisation() {
+  db.collection('ouvriers').onSnapshot(snap => {
+    Stockage.donnees.ouvriers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    syncOuvriersPrete = true;
+    if (!verificationInitialisationFaite) { verificationInitialisationFaite = true; verifierEtInitialiserDonnees(); }
+    rafraichirSelonContexte();
+  }, err => { console.error('Erreur de synchronisation (ouvriers) :', err); afficherNotification('Synchronisation impossible (ouvriers)', 'erreur'); });
+
+  db.collection('zones').onSnapshot(snap => {
+    Stockage.donnees.zones = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    syncZonesPrete = true;
+    rafraichirSelonContexte();
+  }, err => { console.error('Erreur de synchronisation (zones) :', err); afficherNotification('Synchronisation impossible (zones)', 'erreur'); });
+
+  // Quota Firestore : chaque document reçu compte comme une lecture. On
+  // n'écoute en direct que les pointages récents (depuis hier 00:00), qui
+  // suffisent au statut du jour ; les rapports chargent leur période à la
+  // demande (chargerPointagesPeriode). Écouter tout l'historique faisait
+  // relire des milliers de pointages à chaque ouverture de l'app.
+  const debutFenetre = new Date(); debutFenetre.setHours(0,0,0,0); debutFenetre.setDate(debutFenetre.getDate()-1);
+  db.collection('pointages').where('horodatage', '>=', debutFenetre.toISOString()).onSnapshot(snap => {
+    Stockage.donnees.pointages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    rafraichirSelonContexte();
+  }, err => { console.error('Erreur de synchronisation (pointages) :', err); afficherNotification('Synchronisation impossible (pointages)', 'erreur'); });
+
+  db.collection('absences').onSnapshot(snap => {
+    Stockage.donnees.absences = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    rafraichirSelonContexte();
+  }, err => { console.error('Erreur de synchronisation (absences) :', err); afficherNotification('Synchronisation impossible (absences)', 'erreur'); });
+
+  db.collection('comptes').onSnapshot(snap => {
+    Stockage.donnees.comptes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    syncComptesPrete = true;
+    rafraichirSelonContexte();
+  }, err => { console.error('Erreur de synchronisation (comptes) :', err); });
+
+  demarrerSurveillancePassive();
+}
+
+// Les positions changent toutes les minutes pour chaque ouvrier présent :
+// seule la session gestionnaire (carte en direct) les écoute en continu.
+// Ailleurs, la surveillance passive les relit ponctuellement si besoin.
+let ecoutePositionsActive = false;
+function ecouterPositions() {
+  if (ecoutePositionsActive) return;
+  ecoutePositionsActive = true;
+  db.collection('positions').onSnapshot(snap => {
+    Stockage.donnees.positions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (carteLeaflet) mettreAJourCarte();
+  }, err => { console.error('Erreur de synchronisation (positions) :', err); });
+}
+
+// Pointages des jours du..au (AAAA-MM-JJ, bornes incluses, heure locale),
+// lus une seule fois : pour les rapports et les périodes hors de la fenêtre écoutée.
+async function chargerPointagesPeriode(du, au) {
+  const fin = dateDepuisLocale(au); fin.setDate(fin.getDate()+1);
+  const snap = await db.collection('pointages')
+    .where('horodatage', '>=', dateDepuisLocale(du).toISOString())
+    .where('horodatage', '<', fin.toISOString())
+    .get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+function rafraichirSelonContexte() {
+  if (!utilisateurActuel) {
+    if (roleSelectionne === 'ouvrier') peuplerListeOuvriersConnexion();
+    if (roleSelectionne === 'gestionnaire') peuplerConnexionGestionnaire();
+    return;
+  }
+  if (utilisateurActuel.role === 'gestionnaire') {
+    actualiserGestionnaire();
+    afficherOuvriersGestion();
+    afficherZones();
+    remplirOuvriersRapport();
+    remplirOuvriersAbsence();
+    afficherAbsences();
+    if (utilisateurActuel.admin) afficherComptes();
+    if (carteLeaflet) mettreAJourCarte();
+  } else if (utilisateurActuel.role === 'ouvrier') {
+    mettreAJourStatutOuvrier();
+    afficherHistoriqueOuvrier();
+    if (GPS.position) mettreAJourAffichageGPS(GPS.position);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GPS
+═══════════════════════════════════════════════════════════ */
+const GPS = {
+  position: null,
+  idSuivi: null,
+  surMiseAJour: null,
+  surErreur: null,
+  demarrer() {
+    if (!navigator.geolocation) {
+      if (this.surErreur) this.surErreur({ code: 0 });
+      return;
+    }
+    this.idSuivi = navigator.geolocation.watchPosition(
+      pos => {
+        this.position = { lat: pos.coords.latitude, lng: pos.coords.longitude, precision: pos.coords.accuracy };
+        if (this.surMiseAJour) this.surMiseAJour(this.position);
+      },
+      err => {
+        console.warn('Erreur GPS :', err.message);
+        if (this.surErreur) this.surErreur(err);
+      },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+    );
+  },
+  arreter() {
+    if (this.idSuivi !== null) { navigator.geolocation.clearWatch(this.idSuivi); this.idSuivi = null; }
+  },
+  zoneLaPlusProche(lat, lng) {
+    // Priorité à une zone dans laquelle on se trouve réellement (au cas où
+    // plusieurs zones existent, on prend la plus proche parmi celles-là) ;
+    // seulement si on n'est dans aucune zone, on retombe sur la plus proche
+    // en distance brute (pour afficher "hors zone, à X m de la zone Y").
+    let meilleureDansZone = null, meilleureDistDansZone = Infinity;
+    let meilleureGlobale = null, meilleureDistGlobale = Infinity;
+    for (const z of Stockage.donnees.zones) {
+      const d = distanceGeo(lat, lng, z.lat, z.lng);
+      if (d < meilleureDistGlobale) { meilleureDistGlobale = d; meilleureGlobale = z; }
+      if (d <= z.rayon && d < meilleureDistDansZone) { meilleureDistDansZone = d; meilleureDansZone = z; }
+    }
+    if (meilleureDansZone) return { zone: meilleureDansZone, distance: meilleureDistDansZone, dansZone: true };
+    return meilleureGlobale ? { zone: meilleureGlobale, distance: meilleureDistGlobale, dansZone: false } : null;
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════
+   AUTHENTIFICATION
+═══════════════════════════════════════════════════════════ */
+let utilisateurActuel = null;
+function enregistrerSession(u) { try { localStorage.setItem('pointagepro_dmd_session', JSON.stringify(u)); } catch(e){} }
+function chargerSession() { try { const s=localStorage.getItem('pointagepro_dmd_session'); return s?JSON.parse(s):null; } catch(e){return null;} }
+function effacerSession() { try { localStorage.removeItem('pointagepro_dmd_session'); } catch(e){} }
+
+/* ═══════════════════════════════════════════════════════════
+   NOTIFICATION
+═══════════════════════════════════════════════════════════ */
+let minuteurNotification = null;
+function afficherNotification(msg, type='info') {
+  const icones = { succes:'✅', erreur:'❌', alerte:'⚠️', info:'ℹ️' };
+  $('icone-notification').textContent = icones[type] || '';
+  $('message-notification').textContent = msg;
+  const n = $('notification');
+  n.classList.add('visible');
+  clearTimeout(minuteurNotification);
+  minuteurNotification = setTimeout(()=>n.classList.remove('visible'), 3200);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NOTIFICATION PUSH LOCALE (sortie de chantier sans pointage)
+   Déclenchée directement sur l'appareil, sans passer par un serveur,
+   dès que la géolocalisation détecte une sortie de zone incohérente
+   avec le statut de pointage — fonctionne même si l'onglet est en
+   arrière-plan tant que le navigateur reste actif.
+═══════════════════════════════════════════════════════════ */
+let alerteSortieNotifiee = false;
+let minuteurNotifSortie = null;
+const DELAI_NOTIF_SORTIE_MS = 10 * 60 * 1000; // délai de grâce avant notification (évite les faux positifs GPS)
+const HEURE_ACTIVATION_NOTIF_SORTIE = { heures: 15, minutes: 15 }; // avant cette heure, pas de notification (pause de midi)
+
+function annulerMinuteurNotifSortie() {
+  if (minuteurNotifSortie !== null) { clearTimeout(minuteurNotifSortie); minuteurNotifSortie = null; }
+}
+
+function notifSortieActivee() {
+  const maintenant = new Date();
+  const { heures, minutes } = HEURE_ACTIVATION_NOTIF_SORTIE;
+  return maintenant.getHours() > heures || (maintenant.getHours() === heures && maintenant.getMinutes() >= minutes);
+}
+
+function notificationsDisponibles() {
+  return 'Notification' in window;
+}
+
+function demanderPermissionNotifications() {
+  if (!notificationsDisponibles() || Notification.permission !== 'default') return;
+  Notification.requestPermission().catch(()=>{});
+}
+
+async function envoyerNotificationLocale(titre, corps, tag) {
+  if (!notificationsDisponibles() || Notification.permission !== 'granted') return;
+  const options = { body: corps, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag, vibrate: [200, 100, 200] };
+  try {
+    if ('serviceWorker' in navigator) {
+      const inscription = await navigator.serviceWorker.ready;
+      await inscription.showNotification(titre, options);
+    } else {
+      new Notification(titre, options);
+    }
+  } catch (e) { console.warn('Notification impossible :', e); }
+}
+
+function notifierSortieSansPointage() {
+  return envoyerNotificationLocale(
+    'Sortie du chantier non pointée',
+    "Vous quittez le chantier sans avoir pointé votre départ — n'oubliez pas !",
+    'sortie-sans-pointage'
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUTO-DÉPOINTAGE (sortie de zone prolongée sans pointage)
+   Filet de sécurité après le rappel : si l'ouvrier reste hors zone en
+   continu, sans avoir pointé sa sortie, pendant DELAI_AUTO_DEPOINTAGE_MS,
+   l'app enregistre elle-même une sortie (marquée « automatique » pour
+   rester distinguable et corrigeable). Le délai est volontairement bien
+   plus long que celui du simple rappel, pour ne jamais couvrir une pause
+   ou un déplacement légitime hors zone.
+═══════════════════════════════════════════════════════════ */
+let minuteurAutoDepointage = null;
+let momentSortieZoneDetectee = null; // horodatage réel du début de la sortie de zone, pas celui du déclenchement du minuteur
+const DELAI_AUTO_DEPOINTAGE_MS = 60 * 60 * 1000; // 1 heure hors zone en continu
+
+function annulerMinuteurAutoDepointage() {
+  if (minuteurAutoDepointage !== null) { clearTimeout(minuteurAutoDepointage); minuteurAutoDepointage = null; }
+  momentSortieZoneDetectee = null;
+}
+
+async function effectuerAutoDepointage() {
+  if (!utilisateurActuel || utilisateurActuel.role !== 'ouvrier') return;
+  const dernier = dernierPointageDuJour(utilisateurActuel.id);
+  if (!dernier || dernier.type !== 'entree') return; // déjà régularisé entre-temps
+  const pos = GPS.position;
+  const horodatage = momentSortieZoneDetectee || new Date().toISOString();
+  try {
+    await db.collection('pointages').doc(genererId()).set({
+      idOuvrier: utilisateurActuel.id,
+      type: 'sortie',
+      lat: pos?.lat ?? null, lng: pos?.lng ?? null,
+      horodatage,
+      idZone: null, dansZone: false, automatique: true
+    });
+    envoyerNotificationLocale(
+      'Sortie enregistrée automatiquement',
+      "Vous étiez hors chantier depuis plus d'une heure sans avoir pointé — votre sortie a été enregistrée automatiquement. Corrigez-la si c'est une erreur.",
+      'auto-depointage'
+    );
+  } catch (e) {
+    console.error('Erreur auto-dépointage :', e);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUTO-DÉPOINTAGE PAR SURVEILLANCE PASSIVE
+   Le minuteur ci-dessus ne fonctionne que si l'onglet de l'OUVRIER
+   concerné reste actif en continu pendant 1h — or un téléphone mis en
+   veille ou dont l'app passe en arrière-plan voit ses minuteurs
+   suspendus par l'OS, donc ce cas très courant ne se déclenche jamais.
+   Ce filet de secours tourne dans N'IMPORTE QUELLE session ouverte
+   (ouvrier ou gestionnaire, y compris avant connexion) : toutes les
+   INTERVALLE_VERIFICATION_RETARD_MS, on compare la dernière position
+   connue de chaque ouvrier « présent » (déjà envoyée toutes les ~20s
+   pendant qu'il utilisait l'app) à maintenant. Si elle date de plus de
+   DELAI_AUTO_DEPOINTAGE_MS et était hors zone, on régularise sa sortie
+   à l'heure de cette dernière position — bien plus fiable qu'un seul
+   téléphone resté éveillé, même si ça reste best-effort (nécessite
+   qu'au moins une session, n'importe laquelle, soit ouverte de temps
+   à autre).
+═══════════════════════════════════════════════════════════ */
+const INTERVALLE_VERIFICATION_RETARD_MS = 5 * 60 * 1000;
+let minuteurVerificationRetard = null;
+
+// Marge de sécurité : une dernière position juste au bord du chantier
+// (parking, conteneur, dérive GPS de quelques dizaines de mètres) suivie
+// d'un téléphone mis en veille ne prouve pas un départ. On n'en conclut une
+// sortie que si cette position est loin de TOUTES les zones (au-delà de
+// FACTEUR_MARGE_AUTO_DEPOINTAGE fois leur rayon).
+const FACTEUR_MARGE_AUTO_DEPOINTAGE = 2;
+
+function positionNettementHorsZone(position) {
+  return !Stockage.donnees.zones.some(z =>
+    distanceGeo(position.lat, position.lng, z.lat, z.lng) <= z.rayon * FACTEUR_MARGE_AUTO_DEPOINTAGE);
+}
+
+async function verifierPointagesEnRetard() {
+  if (!donneesEssentiellesChargees()) return;
+  const maintenant = Date.now();
+  const presents = Stockage.donnees.ouvriers.filter(o => dernierPointageDuJour(o.id)?.type === 'entree');
+  if (!presents.length) return;
+  let positions = Stockage.donnees.positions;
+  if (!ecoutePositionsActive) {
+    try { positions = (await db.collection('positions').get()).docs.map(d => ({ id: d.id, ...d.data() })); }
+    catch (e) { console.error('Lecture des positions impossible :', e); return; }
+  }
+  for (const o of presents) {
+    const dernier = dernierPointageDuJour(o.id);
+    const position = positions.find(p => p.id === o.id);
+    if (!position) continue; // jamais envoyé de position (ou supprimée à la déconnexion)
+    // Position antérieure à l'entrée (ex. entrée saisie manuellement par le
+    // gestionnaire, ouvrier sans GPS) : elle ne dit rien de la présence actuelle
+    if (new Date(position.horodatage) <= new Date(dernier.horodatage)) continue;
+    const age = maintenant - new Date(position.horodatage).getTime();
+    if (age < DELAI_AUTO_DEPOINTAGE_MS) continue;
+    if (!positionNettementHorsZone(position)) continue; // dernière position connue dans la zone ou à son bord : on ne peut pas conclure
+    try {
+      await db.collection('pointages').doc(genererId()).set({
+        idOuvrier: o.id,
+        type: 'sortie',
+        lat: position.lat, lng: position.lng,
+        horodatage: position.horodatage,
+        idZone: null, dansZone: false, automatique: true
+      });
+    } catch (e) {
+      console.error('Erreur auto-dépointage (surveillance passive) :', e);
+    }
+  }
+}
+
+function demarrerSurveillancePassive() {
+  if (minuteurVerificationRetard !== null) return; // déjà démarrée dans cette session
+  minuteurVerificationRetard = setInterval(verifierPointagesEnRetard, INTERVALLE_VERIFICATION_RETARD_MS);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BOÎTE DE DIALOGUE
+═══════════════════════════════════════════════════════════ */
+let rappelDialogue = null;
+function ouvrirDialogue(titre, corps, surConfirmation) {
+  $('titre-dialogue').textContent = titre;
+  $('corps-dialogue').textContent = corps;
+  rappelDialogue = surConfirmation;
+  $('dialogue').classList.add('ouvert');
+}
+function fermerDialogue() { $('dialogue').classList.remove('ouvert'); rappelDialogue = null; }
+$('confirmer-dialogue').onclick = () => {
+  const rappel = rappelDialogue;
+  fermerDialogue();
+  if (rappel) rappel();
+};
+$('dialogue').addEventListener('click', e => { if (e.target === $('dialogue')) fermerDialogue(); });
+
+/* ═══════════════════════════════════════════════════════════
+   CONNEXION
+═══════════════════════════════════════════════════════════ */
+let roleSelectionne = null;
+
+async function hacherTexte(texte) {
+  const donnees = new TextEncoder().encode(texte);
+  const empreinte = await crypto.subtle.digest('SHA-256', donnees);
+  return Array.from(new Uint8Array(empreinte)).map(o => o.toString(16).padStart(2, '0')).join('');
+}
+
+function selectionnerRole(role) {
+  roleSelectionne = role;
+  $('role-gestionnaire').classList.toggle('selectionne', role==='gestionnaire');
+  $('role-ouvrier').classList.toggle('selectionne', role==='ouvrier');
+  $('section-selection-ouvrier').style.display = 'none';
+  $('section-compte-gestionnaire').style.display = 'none';
+  $('section-mdp-gestionnaire').style.display = 'none';
+  $('mdp-gestionnaire').value = '';
+
+  if (role === 'ouvrier') {
+    $('section-selection-ouvrier').style.display = 'block';
+    peuplerListeOuvriersConnexion();
+    $('selection-ouvrier').onchange = () => mettreAJourBoutonConnexion();
+  } else if (role === 'gestionnaire') {
+    $('section-mdp-gestionnaire').style.display = 'block';
+    $('selection-compte-gestionnaire').onchange = () => { mettreAJourLibelleMdpGestionnaire(); mettreAJourBoutonConnexion(); };
+    peuplerConnexionGestionnaire();
+  }
+  mettreAJourBoutonConnexion();
+}
+
+function peuplerListeOuvriersConnexion() {
+  const sel = $('selection-ouvrier');
+  const valeurActuelle = sel.value;
+  sel.innerHTML = '<option value="">-- Choisir votre nom --</option>';
+  Stockage.donnees.ouvriers.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.id; opt.textContent = `${o.nom} — ${o.metier}`;
+    sel.appendChild(opt);
+  });
+  if ([...sel.options].some(o => o.value === valeurActuelle)) sel.value = valeurActuelle;
+  mettreAJourBoutonConnexion();
+}
+
+function comptesActifsConnexion() {
+  return Stockage.donnees.comptes.filter(c => c.actif);
+}
+
+function peuplerConnexionGestionnaire() {
+  if (roleSelectionne !== 'gestionnaire') return;
+  if (!syncComptesPrete) {
+    $('section-compte-gestionnaire').style.display = 'none';
+    $('indice-compte-oublie').style.display = 'none';
+    $('mdp-gestionnaire').disabled = true;
+    $('libelle-mdp-gestionnaire').textContent = 'Chargement…';
+    mettreAJourBoutonConnexion();
+    return;
+  }
+  $('mdp-gestionnaire').disabled = false;
+  const comptes = comptesActifsConnexion();
+  if (!comptes.length) {
+    $('section-compte-gestionnaire').style.display = 'none';
+    $('indice-compte-oublie').style.display = 'none';
+    $('libelle-mdp-gestionnaire').textContent = 'Créer le mot de passe administrateur';
+  } else {
+    $('section-compte-gestionnaire').style.display = 'block';
+    $('indice-compte-oublie').style.display = 'block';
+    const sel = $('selection-compte-gestionnaire');
+    const valeurActuelle = sel.value;
+    sel.innerHTML = '<option value="">-- Choisir un compte --</option>';
+    comptes.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id; opt.textContent = c.nom + (c.admin ? ' (Administrateur)' : '');
+      sel.appendChild(opt);
+    });
+    if ([...sel.options].some(o => o.value === valeurActuelle)) sel.value = valeurActuelle;
+    mettreAJourLibelleMdpGestionnaire();
+  }
+  mettreAJourBoutonConnexion();
+}
+
+function mettreAJourLibelleMdpGestionnaire() {
+  const comptes = comptesActifsConnexion();
+  if (!comptes.length) return;
+  const compte = comptes.find(c => c.id === $('selection-compte-gestionnaire').value);
+  $('libelle-mdp-gestionnaire').textContent = (compte && !compte.empreinte) ? 'Créer le mot de passe' : 'Mot de passe';
+}
+
+function mettreAJourBoutonConnexion() {
+  const btn = $('bouton-connexion');
+  if (!roleSelectionne) { btn.disabled = true; return; }
+  if (roleSelectionne === 'ouvrier' && !$('selection-ouvrier').value) { btn.disabled = true; return; }
+  if (roleSelectionne === 'gestionnaire') {
+    if (!syncComptesPrete) { btn.disabled = true; return; }
+    if (comptesActifsConnexion().length && !$('selection-compte-gestionnaire').value) { btn.disabled = true; return; }
+    if (!$('mdp-gestionnaire').value) { btn.disabled = true; return; }
+  }
+  btn.disabled = false;
+}
+
+async function seConnecter() {
+  if (!roleSelectionne) return;
+  if (roleSelectionne === 'gestionnaire') {
+    if (!syncComptesPrete) return;
+    const mdp = $('mdp-gestionnaire').value;
+    if (!mdp) return;
+    const empreinte = await hacherTexte(mdp);
+    const comptes = comptesActifsConnexion();
+
+    if (!comptes.length) {
+      const id = genererId();
+      try {
+        await db.collection('comptes').doc(id).set({ nom: 'Administrateur', empreinte, admin: true, actif: true });
+      } catch (e) { afficherNotification('Erreur : ' + e.message, 'erreur'); return; }
+      afficherNotification('Compte administrateur créé', 'succes');
+      utilisateurActuel = { role: 'gestionnaire', id, nom: 'Administrateur', admin: true };
+      enregistrerSession(utilisateurActuel);
+      afficherVueGestionnaire();
+      return;
+    }
+
+    const compte = comptes.find(c => c.id === $('selection-compte-gestionnaire').value);
+    if (!compte) { afficherNotification('Sélectionnez votre compte', 'erreur'); return; }
+
+    if (!compte.empreinte) {
+      try {
+        await db.collection('comptes').doc(compte.id).update({ empreinte });
+      } catch (e) { afficherNotification('Erreur : ' + e.message, 'erreur'); return; }
+      afficherNotification('Mot de passe défini', 'succes');
+    } else if (empreinte !== compte.empreinte) {
+      afficherNotification('Mot de passe incorrect', 'erreur');
+      return;
+    }
+    utilisateurActuel = { role: 'gestionnaire', id: compte.id, nom: compte.nom, admin: !!compte.admin };
+    enregistrerSession(utilisateurActuel);
+    afficherVueGestionnaire();
+  } else {
+    const idOuvrier = $('selection-ouvrier').value;
+    if (!idOuvrier) return;
+    const o = Stockage.donnees.ouvriers.find(x=>x.id===idOuvrier);
+    utilisateurActuel = { role: 'ouvrier', id: idOuvrier, nom: o.nom, metier: o.metier };
+    enregistrerSession(utilisateurActuel);
+    afficherVueOuvrier();
+  }
+}
+
+function seDeconnecter() {
+  if (utilisateurActuel?.role === 'ouvrier') {
+    db.collection('positions').doc(utilisateurActuel.id).delete().catch(()=>{});
+  }
+  GPS.arreter(); effacerSession(); utilisateurActuel = null;
+  alerteSortieNotifiee = false;
+  annulerMinuteurNotifSortie();
+  annulerMinuteurAutoDepointage();
+  clearInterval(intervalleHorloge);
+  afficherVue('connexion');
+  roleSelectionne = null;
+  $('role-gestionnaire').classList.remove('selectionne');
+  $('role-ouvrier').classList.remove('selectionne');
+  $('section-selection-ouvrier').style.display = 'none';
+  $('section-mdp-gestionnaire').style.display = 'none';
+  $('mdp-gestionnaire').value = '';
+  $('bouton-connexion').disabled = true;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GESTION DES VUES
+═══════════════════════════════════════════════════════════ */
+function afficherVue(nom) {
+  document.querySelectorAll('.vue').forEach(v => v.classList.remove('actif'));
+  const v = $(`vue-${nom}`);
+  if (v) v.classList.add('actif');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VUE OUVRIER
+═══════════════════════════════════════════════════════════ */
+let intervalleHorloge = null;
+
+function afficherVueOuvrier() {
+  afficherVue('ouvrier');
+  const u = utilisateurActuel;
+  $('nom-entete-ouvrier').textContent = u.nom;
+  $('avatar-entete-ouvrier').textContent = initiales(u.nom);
+  $('avatar-entete-ouvrier').style.background = couleurAvatar(u.nom);
+
+  // Horloge en direct
+  clearInterval(intervalleHorloge);
+  function actualiserHorloge() {
+    const maintenant = new Date();
+    $('heure-ouvrier').textContent = maintenant.toLocaleTimeString('fr-BE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    $('date-ouvrier').textContent = maintenant.toLocaleDateString('fr-BE', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+  }
+  actualiserHorloge(); intervalleHorloge = setInterval(actualiserHorloge, 1000);
+
+  mettreAJourStatutOuvrier();
+  afficherHistoriqueOuvrier();
+  demanderPermissionNotifications();
+
+  // GPS
+  GPS.surMiseAJour = pos => mettreAJourAffichageGPS(pos);
+  GPS.surErreur = err => gererErreurGPS(err);
+  GPS.demarrer();
+  mettreAJourAffichageGPS(GPS.position);
+  if (!GPS.position) { $('statut-gps-ouvrier').textContent = 'Demande de permission GPS…'; }
+}
+
+function gererErreurGPS(err) {
+  const messages = {
+    0: "Ce navigateur ne prend pas en charge la géolocalisation.",
+    1: "Localisation refusée. Autorisez la localisation pour ce site dans les réglages du navigateur, puis rechargez la page.",
+    2: "Position indisponible. Vérifiez que la localisation est activée sur l'appareil.",
+    3: "Délai dépassé pour obtenir la position. Nouvelle tentative en cours…"
+  };
+  $('statut-gps-ouvrier').textContent = messages[err.code] || 'Erreur de géolocalisation.';
+  $('badge-gps-ouvrier').innerHTML = '<span class="badge badge-rouge">✕ GPS</span>';
+  if (err.code !== 3) {
+    dessinerRadarSansGPS();
+    verifierCoherencePointage(null);
+    definirDansZoneConnu(null);
+  }
+}
+
+let dernierDansZoneConnu = null;
+
+function mettreAJourStatutOuvrier() {
+  if (!donneesEssentiellesChargees()) {
+    $('bouton-pointage').disabled = true;
+    $('sous-libelle-pointage').textContent = 'Chargement…';
+    return;
+  }
+  $('bouton-pointage').disabled = false;
+  const aujourdhui = dateAujourdhui();
+  const pointages = Stockage.donnees.pointages.filter(p=>p.idOuvrier===utilisateurActuel.id && jourLocalDe(p.horodatage) === aujourdhui);
+  pointages.sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+
+  const dernier = pointages[pointages.length-1];
+  const estPresent = dernier && dernier.type === 'entree';
+
+  if (estPresent) {
+    $('texte-statut-ouvrier').textContent = 'Présent';
+    $('badge-statut-ouvrier').innerHTML = '<span class="badge badge-vert"><span class="point point-vert point-pulsation"></span>En chantier</span>';
+    const depuis = new Date(dernier.horodatage);
+    $('depuis-statut-ouvrier').textContent = `Depuis ${formaterHeureCourte(depuis)} · ${formaterDuree(Date.now()-depuis)}`;
+    // Bouton de pointage → sortie (rouge)
+    const btn = $('bouton-pointage');
+    btn.style.background = 'linear-gradient(135deg, #B91C1C, #991B1B)';
+    btn.style.boxShadow = '0 8px 32px rgba(185,28,28,.35)';
+    $('libelle-pointage').textContent = 'Pointer la sortie';
+    $('sous-libelle-pointage').textContent = 'Appuyer pour quitter';
+    $('icone-pointage').innerHTML = '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/>';
+    $('anneau-pointage').style.borderColor = '#FCA5A5';
+    $('anneau-pointage').classList.add('actif');
+  } else {
+    $('texte-statut-ouvrier').textContent = 'Absent';
+    $('badge-statut-ouvrier').innerHTML = '<span class="badge badge-gris">Non pointé</span>';
+    if (dernier && dernier.type === 'sortie') {
+      $('depuis-statut-ouvrier').textContent = `Sorti à ${formaterHeureCourte(new Date(dernier.horodatage))}`;
+    } else {
+      $('depuis-statut-ouvrier').textContent = 'Pas encore pointé aujourd\'hui';
+    }
+    const btn = $('bouton-pointage');
+    btn.style.background = 'linear-gradient(135deg, #15803D, #166534)';
+    btn.style.boxShadow = '0 8px 32px rgba(21,128,61,.35)';
+    $('libelle-pointage').textContent = 'Pointer l\'entrée';
+    $('sous-libelle-pointage').textContent = 'Appuyer pour pointer';
+    $('icone-pointage').innerHTML = '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>';
+    $('anneau-pointage').style.borderColor = '#86EFAC';
+    $('anneau-pointage').classList.add('actif');
+
+    // L'entrée ne peut être pointée que depuis l'intérieur d'une zone de chantier ;
+    // la sortie (ci-dessus) reste toujours possible pour ne pas bloquer un ouvrier
+    // dont le GPS dérive légèrement au moment de quitter le chantier.
+    if (Stockage.donnees.zones.length > 0 && dernierDansZoneConnu !== true) {
+      btn.disabled = true;
+      $('sous-libelle-pointage').textContent = 'Approchez-vous d\'une zone de chantier';
+    }
+  }
+}
+
+function dernierPointageDuJour(idOuvrier) {
+  const aujourdhui = dateAujourdhui();
+  const pointages = Stockage.donnees.pointages
+    .filter(p=>p.idOuvrier===idOuvrier && jourLocalDe(p.horodatage) === aujourdhui)
+    .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+  return pointages[pointages.length-1] || null;
+}
+
+let dernierEnvoiPosition = 0;
+const INTERVALLE_ENVOI_POSITION_MS = 60000; // 1 min : assez pour la carte et la surveillance, 3× moins d'écritures/lectures
+
+function envoyerPositionSiNecessaire(pos) {
+  if (!utilisateurActuel || utilisateurActuel.role !== 'ouvrier') return;
+  const maintenant = Date.now();
+  if (maintenant - dernierEnvoiPosition < INTERVALLE_ENVOI_POSITION_MS) return;
+  dernierEnvoiPosition = maintenant;
+  db.collection('positions').doc(utilisateurActuel.id).set({
+    lat: pos.lat, lng: pos.lng, horodatage: new Date().toISOString()
+  }).catch(e => console.error('Erreur envoi position :', e));
+}
+
+function verifierCoherencePointage(dansZone) {
+  const el = $('alerte-pointage-manquant');
+  if (dansZone === null) { el.style.display = 'none'; return; }
+  const dernier = dernierPointageDuJour(utilisateurActuel.id);
+  const estPresent = !!dernier && dernier.type === 'entree';
+  if (dansZone && !estPresent) {
+    $('texte-alerte-pointage').textContent = "Vous êtes dans la zone du chantier mais vous n'avez pas pointé votre entrée.";
+    el.style.display = 'block';
+    alerteSortieNotifiee = false;
+    annulerMinuteurNotifSortie();
+    annulerMinuteurAutoDepointage();
+  } else if (!dansZone && estPresent) {
+    $('texte-alerte-pointage').textContent = 'Vous avez quitté la zone du chantier sans pointer votre sortie.';
+    el.style.display = 'block';
+    // Délai de grâce : on ne notifie que si la sortie de zone se confirme
+    // pendant DELAI_NOTIF_SORTIE_MS, pour éviter les faux positifs dus à
+    // une dérive GPS ponctuelle (bâtiment, sous-sol, etc.). Et seulement à
+    // partir de HEURE_ACTIVATION_NOTIF_SORTIE, pour ne pas alerter pendant
+    // la pause de midi (sortie hors zone habituelle et sans conséquence).
+    if (!alerteSortieNotifiee && minuteurNotifSortie === null && notifSortieActivee()) {
+      minuteurNotifSortie = setTimeout(() => {
+        minuteurNotifSortie = null;
+        alerteSortieNotifiee = true;
+        notifierSortieSansPointage();
+      }, DELAI_NOTIF_SORTIE_MS);
+    }
+    // Filet de sécurité : sortie de zone confirmée sur DELAI_AUTO_DEPOINTAGE_MS
+    // (1h, bien plus long que le rappel) -> dépointage automatique. Pas de
+    // restriction horaire ici : ce délai dépasse déjà largement une pause
+    // légitime, donc pas besoin d'attendre 15h15 comme pour le rappel.
+    if (minuteurAutoDepointage === null) {
+      momentSortieZoneDetectee = new Date().toISOString();
+      minuteurAutoDepointage = setTimeout(() => {
+        minuteurAutoDepointage = null;
+        effectuerAutoDepointage();
+      }, DELAI_AUTO_DEPOINTAGE_MS);
+    }
+  } else {
+    el.style.display = 'none';
+    alerteSortieNotifiee = false;
+    annulerMinuteurNotifSortie();
+    annulerMinuteurAutoDepointage();
+  }
+}
+
+function mettreAJourAffichageGPS(pos) {
+  if (!pos) {
+    $('badge-gps-ouvrier').innerHTML = '<span class="badge badge-gris">Recherche…</span>';
+    dessinerRadarSansGPS();
+    verifierCoherencePointage(null);
+    definirDansZoneConnu(null);
+    return;
+  }
+  $('statut-gps-ouvrier').textContent = `Position obtenue (±${Math.round(pos.precision)}m)`;
+  $('coordonnees-gps-ouvrier').textContent = `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
+  $('badge-gps-ouvrier').innerHTML = '<span class="badge badge-vert">✓ GPS</span>';
+  envoyerPositionSiNecessaire(pos);
+
+  const resultat = GPS.zoneLaPlusProche(pos.lat, pos.lng);
+  if (resultat) {
+    const { zone, distance, dansZone } = resultat;
+    $('point-zone-ouvrier').className = `point ${dansZone?'point-vert point-pulsation':'point-ambre'}`;
+    $('texte-zone-ouvrier').textContent = dansZone
+      ? `✓ Dans la zone : ${zone.nom}`
+      : `Hors zone — ${formaterDistance(distance)} de « ${zone.nom} »`;
+    $('texte-zone-ouvrier').style.color = dansZone ? 'var(--vert)' : 'var(--ambre)';
+    $('distance-radar-ouvrier').textContent = `${formaterDistance(distance)} du centre`;
+    dessinerRadar(pos, resultat);
+    verifierCoherencePointage(dansZone);
+    definirDansZoneConnu(dansZone);
+  } else {
+    $('point-zone-ouvrier').className = 'point point-gris';
+    $('texte-zone-ouvrier').textContent = syncZonesPrete ? 'Aucune zone configurée' : 'Chargement des zones…';
+    $('texte-zone-ouvrier').style.color = 'var(--texte-2)';
+    dessinerRadarSansGPS();
+    verifierCoherencePointage(null);
+    definirDansZoneConnu(null);
+  }
+}
+
+function definirDansZoneConnu(valeur) {
+  if (dernierDansZoneConnu === valeur) return;
+  dernierDansZoneConnu = valeur;
+  if (utilisateurActuel && utilisateurActuel.role === 'ouvrier') mettreAJourStatutOuvrier();
+}
+
+async function pointer() {
+  if (!donneesEssentiellesChargees()) {
+    afficherNotification('Chargement en cours, réessayez dans un instant…', 'alerte');
+    return;
+  }
+  if (!GPS.position) {
+    afficherNotification("Position GPS indisponible — autorisez la localisation pour pouvoir pointer.", 'erreur');
+    return;
+  }
+  const pos = GPS.position;
+  const dernier = dernierPointageDuJour(utilisateurActuel.id);
+  const type = (!dernier || dernier.type==='sortie') ? 'entree' : 'sortie';
+
+  const resultat = GPS.zoneLaPlusProche(pos.lat, pos.lng);
+  const dansZone = resultat?.dansZone || false;
+
+  if (type === 'entree' && Stockage.donnees.zones.length > 0 && !dansZone) {
+    const zoneProche = resultat?.zone ? ` La zone la plus proche (${resultat.zone.nom}) est à ${formaterDistance(resultat.distance)}.` : '';
+    afficherNotification(`Vous devez être dans une zone de chantier pour pointer votre entrée.${zoneProche}`, 'erreur');
+    return;
+  }
+
+  const pointage = {
+    idOuvrier: utilisateurActuel.id,
+    type, lat: pos.lat, lng: pos.lng,
+    horodatage: new Date().toISOString(),
+    idZone: resultat?.zone?.id || null,
+    dansZone
+  };
+
+  try {
+    await db.collection('pointages').doc(genererId()).set(pointage);
+    if (type === 'sortie') { alerteSortieNotifiee = false; annulerMinuteurNotifSortie(); annulerMinuteurAutoDepointage(); }
+    const libelle = type==='entree' ? 'Entrée pointée' : 'Sortie pointée';
+    const alerte = !pointage.dansZone && Stockage.donnees.zones.length > 0 ? ' (hors zone)' : '';
+    afficherNotification(`${libelle} à ${formaterHeureCourte(new Date())}${alerte}`, pointage.dansZone||!Stockage.donnees.zones.length?'succes':'alerte');
+  } catch (e) {
+    afficherNotification('Erreur lors du pointage : ' + e.message, 'erreur');
+  }
+}
+
+function afficherHistoriqueOuvrier() {
+  const aujourdhui = dateAujourdhui();
+  const pointages = Stockage.donnees.pointages
+    .filter(p=>p.idOuvrier===utilisateurActuel.id && jourLocalDe(p.horodatage) === aujourdhui)
+    .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+
+  const el = $('liste-historique-ouvrier');
+  if (!pointages.length) {
+    el.innerHTML = '<div class="aucun-historique">Aucun pointage aujourd\'hui</div>';
+    return;
+  }
+  el.innerHTML = pointages.map(p => {
+    const zone = p.idZone ? Stockage.donnees.zones.find(z=>z.id===p.idZone) : null;
+    const estEntree = p.type==='entree';
+    return `<div class="element-historique">
+      <div class="icone-type-historique" style="background:${estEntree?'var(--vert-clair)':'var(--rouge-clair)'};">
+        ${estEntree?'⬆️':'⬇️'}
+      </div>
+      <div class="info-historique">
+        <div class="type-historique" style="color:${estEntree?'var(--vert)':'var(--rouge)'};">${estEntree?'Entrée':'Sortie'}</div>
+        <div class="meta-historique">${p.forcee ? 'Sortie forcée par le gestionnaire' : p.automatique ? 'Sortie automatique (1h hors zone)' : p.manuel ? `Saisi par le gestionnaire${zone ? ' · ' + zone.nom : ''}` : (zone?zone.nom:'Hors zone')}${!p.forcee&&!p.automatique&&!p.manuel&&!p.dansZone&&Stockage.donnees.zones.length?' · ⚠️ Hors périmètre':''}</div>
+      </div>
+      <div class="heure-historique">${formaterHeureCourte(new Date(p.horodatage))}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ─── CANEVAS RADAR ─── */
+function dessinerRadar(positionOuvrier, resultatZone) {
+  const canevas = $('radar-ouvrier');
+  const ctx = canevas.getContext('2d');
+  const L = canevas.width, H = canevas.height;
+  const cx = L/2, cy = H/2;
+  const sombre = modeSombreActif();
+  const { zone, distance, dansZone } = resultatZone;
+
+  ctx.clearRect(0,0,L,H);
+
+  // Fond (découpé en cercle)
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx,cy,cx,0,Math.PI*2); ctx.clip();
+  ctx.fillStyle = sombre ? '#1C2333' : '#F8FAFC';
+  ctx.fillRect(0,0,L,H);
+
+  // Anneaux de la grille
+  for (let i=1; i<=3; i++) {
+    ctx.beginPath(); ctx.arc(cx,cy,(cx-12)*i/3,0,Math.PI*2);
+    ctx.strokeStyle = sombre?'#30363D':'#E2E8F0';
+    ctx.lineWidth = 1; ctx.stroke();
+  }
+  // Réticule
+  ctx.beginPath(); ctx.moveTo(cx,12); ctx.lineTo(cx,H-12);
+  ctx.moveTo(12,cy); ctx.lineTo(L-12,cy);
+  ctx.strokeStyle = sombre?'#30363D':'#E2E8F0'; ctx.lineWidth=1; ctx.stroke();
+
+  // Échelle : le rayon de la zone correspond à la moitié du rayon du canevas
+  const dispMax = cx - 16;
+  const echelle = dispMax / (zone.rayon * 2.5);
+
+  // Cercle de la zone
+  const rayonAffiche = zone.rayon * echelle;
+  ctx.beginPath(); ctx.arc(cx,cy,rayonAffiche,0,Math.PI*2);
+  ctx.fillStyle = dansZone ? 'rgba(21,128,61,.12)' : 'rgba(215,35,30,.08)';
+  ctx.fill();
+  ctx.strokeStyle = dansZone ? '#15803D' : '#D7231E';
+  ctx.lineWidth = 2; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+
+  // Position de l'ouvrier
+  const cap = capGeo(zone.lat, zone.lng, positionOuvrier.lat, positionOuvrier.lng);
+  const distAffichee = Math.min(distance * echelle, dispMax - 8);
+  const rad = cap * Math.PI / 180;
+  const ox = cx + distAffichee * Math.sin(rad);
+  const oy = cy - distAffichee * Math.cos(rad);
+
+  // Ligne du centre vers l'ouvrier
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(ox,oy);
+  ctx.strokeStyle = sombre?'#484F58':'#CBD5E1'; ctx.lineWidth=1; ctx.stroke();
+
+  // Point central de la zone
+  ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2);
+  ctx.fillStyle = '#D7231E'; ctx.fill();
+
+  // Point de l'ouvrier
+  ctx.beginPath(); ctx.arc(ox,oy,9,0,Math.PI*2);
+  ctx.fillStyle = dansZone ? '#15803D' : '#B91C1C'; ctx.fill();
+  ctx.strokeStyle = sombre?'#1C2333':'#fff'; ctx.lineWidth=2.5; ctx.stroke();
+
+  // Étiquette « Vous »
+  ctx.fillStyle = sombre?'#E6EDF3':'#0F172A';
+  ctx.font = 'bold 10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Vous', ox, oy - 15);
+
+  ctx.restore();
+
+  // Anneau extérieur
+  ctx.beginPath(); ctx.arc(cx,cy,cx-1,0,Math.PI*2);
+  ctx.strokeStyle = sombre?'#30363D':'#E2E8F0'; ctx.lineWidth=2; ctx.stroke();
+}
+
+function dessinerRadarSansGPS() {
+  const canevas = $('radar-ouvrier');
+  const ctx = canevas.getContext('2d');
+  const L = canevas.width, H = canevas.height;
+  const cx = L/2, cy = H/2;
+  const sombre = modeSombreActif();
+  ctx.clearRect(0,0,L,H);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx,cy,cx,0,Math.PI*2); ctx.clip();
+  ctx.fillStyle = sombre?'#1C2333':'#F8FAFC'; ctx.fillRect(0,0,L,H);
+  for (let i=1;i<=3;i++){
+    ctx.beginPath();ctx.arc(cx,cy,(cx-12)*i/3,0,Math.PI*2);
+    ctx.strokeStyle=sombre?'#30363D':'#E2E8F0';ctx.lineWidth=1;ctx.stroke();
+  }
+  ctx.fillStyle = sombre?'#484F58':'#94A3B8';
+  ctx.font = '12px system-ui'; ctx.textAlign='center';
+  ctx.fillText('GPS non disponible', cx, cy);
+  ctx.restore();
+  ctx.beginPath();ctx.arc(cx,cy,cx-1,0,Math.PI*2);
+  ctx.strokeStyle=sombre?'#30363D':'#E2E8F0';ctx.lineWidth=2;ctx.stroke();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VUE GESTIONNAIRE
+═══════════════════════════════════════════════════════════ */
+function afficherVueGestionnaire() {
+  afficherVue('gestionnaire');
+  ecouterPositions();
+  $('nom-utilisateur-en-tete').textContent = utilisateurActuel.nom;
+  $('role-utilisateur-en-tete').textContent = utilisateurActuel.admin ? 'Administrateur' : 'Accès gestionnaire';
+  $('avatar-en-tete').textContent = initiales(utilisateurActuel.nom);
+  $('bouton-onglet-comptes').style.display = utilisateurActuel.admin ? '' : 'none';
+  actualiserGestionnaire();
+  afficherOuvriersGestion();
+  reinitialiserFormulaireZone();
+  afficherZones();
+  initialiserDatesRapport();
+  remplirOuvriersRapport();
+  remplirOuvriersAbsence();
+  reinitialiserFormulaireAbsence();
+  afficherAbsences();
+  if (utilisateurActuel.admin) afficherComptes();
+}
+
+function changerOnglet(nom, btn) {
+  document.querySelectorAll('.bouton-onglet').forEach(b=>b.classList.remove('actif'));
+  document.querySelectorAll('.panneau-onglet').forEach(p=>p.classList.remove('actif'));
+  btn.classList.add('actif');
+  $(`onglet-${nom}`).classList.add('actif');
+  if (nom === 'carte') initialiserCarte();
+}
+
+/* ─── CARTE EN DIRECT ─── */
+let carteLeaflet = null;
+let cerclesZonesCarte = {};
+let marqueursOuvriersCarte = {};
+let derniereCleCadrageCarte = null;
+
+function initialiserCarte() {
+  if (carteLeaflet) {
+    setTimeout(() => carteLeaflet.invalidateSize(), 50);
+    mettreAJourCarte();
+    return;
+  }
+  carteLeaflet = L.map('carte-live').setView([50, 10], 4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(carteLeaflet);
+  setTimeout(() => carteLeaflet.invalidateSize(), 50);
+  derniereCleCadrageCarte = null;
+  mettreAJourCarte();
+}
+
+function idsOuvriersPresents() {
+  return new Set(
+    Stockage.donnees.ouvriers
+      .filter(o => { const d = dernierPointageDuJour(o.id); return d && d.type === 'entree'; })
+      .map(o => o.id)
+  );
+}
+
+function cadrerCarteSiNecessaire(idsPresents) {
+  const cle = Stockage.donnees.zones.map(z => `z:${z.id}:${z.lat}:${z.lng}:${z.rayon}`).sort().join('|')
+    + '||' + [...idsPresents].sort().join(',');
+  if (cle === derniereCleCadrageCarte) return;
+  derniereCleCadrageCarte = cle;
+
+  const points = [];
+  Stockage.donnees.zones.forEach(z => points.push(L.latLng(z.lat, z.lng)));
+  Stockage.donnees.positions.forEach(p => { if (idsPresents.has(p.id)) points.push(L.latLng(p.lat, p.lng)); });
+
+  if (!points.length) { carteLeaflet.setView([50, 10], 4); return; }
+  if (points.length === 1) { carteLeaflet.setView(points[0], 15); return; }
+  carteLeaflet.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 16 });
+}
+
+function recadrerCarteManuel() {
+  derniereCleCadrageCarte = null;
+  mettreAJourCarte();
+}
+
+function mettreAJourCarte() {
+  if (!carteLeaflet) return;
+
+  Object.values(cerclesZonesCarte).forEach(c => carteLeaflet.removeLayer(c));
+  cerclesZonesCarte = {};
+  Stockage.donnees.zones.forEach(z => {
+    const cercle = L.circle([z.lat, z.lng], {
+      radius: z.rayon, color: '#D7231E', weight: 2, fillColor: '#D7231E', fillOpacity: 0.08
+    }).addTo(carteLeaflet).bindTooltip(z.nom, { permanent: true, direction: 'top', className: 'etiquette-zone-carte' });
+    cerclesZonesCarte[z.id] = cercle;
+  });
+
+  const idsPresents = idsOuvriersPresents();
+
+  Object.keys(marqueursOuvriersCarte).forEach(id => {
+    const positionConnue = Stockage.donnees.positions.find(p => p.id === id);
+    if (!idsPresents.has(id) || !positionConnue) {
+      carteLeaflet.removeLayer(marqueursOuvriersCarte[id]);
+      delete marqueursOuvriersCarte[id];
+    }
+  });
+
+  Stockage.donnees.positions.forEach(p => {
+    if (!idsPresents.has(p.id)) return;
+    const o = Stockage.donnees.ouvriers.find(x => x.id === p.id);
+    if (!o) return;
+    const couleur = couleurAvatar(o.nom);
+    if (marqueursOuvriersCarte[p.id]) {
+      marqueursOuvriersCarte[p.id].setLatLng([p.lat, p.lng]);
+    } else {
+      const icone = L.divIcon({
+        className: '',
+        html: `<div style="background:${couleur};width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;font-family:var(--police-titre);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);">${initiales(o.nom)}</div>`,
+        iconSize: [30, 30], iconAnchor: [15, 15]
+      });
+      marqueursOuvriersCarte[p.id] = L.marker([p.lat, p.lng], { icon: icone })
+        .addTo(carteLeaflet)
+        .bindPopup(`<b>${o.nom}</b><br>${o.metier}`);
+    }
+  });
+
+  cadrerCarteSiNecessaire(idsPresents);
+}
+
+function actualiserGestionnaire() {
+  const aujourdhui = dateAujourdhui();
+  const ouvriers = Stockage.donnees.ouvriers;
+
+  let presents=0, absents=0, horsZone=0, absencesEncodees=0;
+  const cartes = ouvriers.map(o => {
+    const pointagesJour = Stockage.donnees.pointages
+      .filter(p=>p.idOuvrier===o.id && jourLocalDe(p.horodatage) === aujourdhui)
+      .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+    const dernier = pointagesJour[pointagesJour.length-1];
+    const estPresent = dernier && dernier.type==='entree';
+    const estHorsZone = estPresent && !dernier.dansZone && Stockage.donnees.zones.length>0;
+
+    const absence = absenceDuJour(o.id, aujourdhui);
+    if (estPresent) { presents++; if (estHorsZone) horsZone++; }
+    else if (absence) absencesEncodees++;
+    else absents++;
+
+    const premiereEntree = pointagesJour.find(p=>p.type==='entree');
+    const tempsTotal = calculerTempsTotal(pointagesJour);
+    const zone = dernier?.idZone ? Stockage.donnees.zones.find(z=>z.id===dernier.idZone) : null;
+    const couleur = couleurAvatar(o.nom);
+
+    return `<div class="carte carte-ouvrier">
+      <div class="haut-carte-ouvrier">
+        <div class="identite-carte-ouvrier">
+          <div class="avatar-carte-ouvrier" style="background:${couleur};">${initiales(o.nom)}</div>
+          <div>
+            <div class="nom-carte-ouvrier">${o.nom}</div>
+            <div class="role-carte-ouvrier">${o.metier}</div>
+          </div>
+        </div>
+        ${estPresent
+          ? estHorsZone
+            ? '<span class="badge badge-ambre"><span class="point point-ambre point-pulsation"></span>Hors zone</span>'
+            : '<span class="badge badge-vert"><span class="point point-vert point-pulsation"></span>Présent</span>'
+          : absence
+            ? badgeAbsence(absence.type)
+            : '<span class="badge badge-gris">Absent</span>'
+        }
+      </div>
+      ${absence && !estPresent ? `<div class="meta-zone" style="margin:-4px 0 8px;">${libellePeriodeAbsence(absence)}${absence.commentaire ? ' · ' + echapperHtml(absence.commentaire) : ''}</div>` : ''}
+      <div class="stats-carte-ouvrier">
+        <div class="ligne-stat-ouvrier">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          <span class="libelle-stat-ouvrier">Entrée :</span>
+          <span class="valeur-stat-ouvrier">${premiereEntree?formaterHeureCourte(new Date(premiereEntree.horodatage)):'—'}</span>
+        </div>
+        <div class="ligne-stat-ouvrier">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0A9 9 0 0 0 3 12"/><path d="M12 7v5l3 3"/></svg>
+          <span class="libelle-stat-ouvrier">Temps travaillé :</span>
+          <span class="valeur-stat-ouvrier">${tempsTotal>0?formaterDuree(tempsTotal):'—'}</span>
+        </div>
+        <div class="ligne-stat-ouvrier">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span class="libelle-stat-ouvrier">Zone :</span>
+          <span class="valeur-stat-ouvrier">${zone?zone.nom:estPresent?'Hors zone':'—'}</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:12px;">
+        ${estPresent ? `<button class="bouton bouton-fantome bouton-petit" style="flex:1;" onclick="forcerSortie('${o.id}')">Forcer la sortie</button>` : ''}
+        <button class="bouton bouton-fantome bouton-petit" style="flex:1;" onclick="ouvrirPointageManuel('${o.id}')">✍️ ${estPresent ? 'Saisir' : "Saisir l'entrée"}</button>
+      </div>
+    </div>`;
+  });
+
+  $('stat-presents').textContent = presents;
+  $('stat-absents').textContent = absents;
+  $('stat-absences').textContent = absencesEncodees;
+  $('stat-hors-zone').textContent = horsZone;
+  $('grille-ouvriers-gestionnaire').innerHTML = cartes.join('');
+}
+
+function calculerTempsTotal(pointages) {
+  let total = 0;
+  for (let i=0; i<pointages.length-1; i++) {
+    if (pointages[i].type==='entree' && pointages[i+1].type==='sortie') {
+      total += new Date(pointages[i+1].horodatage) - new Date(pointages[i].horodatage);
+    }
+  }
+  // Si le dernier pointage est une entrée, compter le temps jusqu'à maintenant
+  const dernier = pointages[pointages.length-1];
+  if (dernier && dernier.type==='entree') total += Date.now() - new Date(dernier.horodatage);
+  return total;
+}
+
+function forcerSortie(idOuvrier) {
+  const o = Stockage.donnees.ouvriers.find(x => x.id === idOuvrier);
+  if (!o) return;
+  ouvrirDialogue('Forcer la sortie', `Enregistrer maintenant une sortie pour « ${o.nom} » ? À utiliser s'il a oublié de pointer sa sortie.`, async () => {
+    try {
+      await db.collection('pointages').doc(genererId()).set({
+        idOuvrier, type: 'sortie', lat: null, lng: null,
+        horodatage: new Date().toISOString(), idZone: null, dansZone: false, forcee: true
+      });
+      afficherNotification(`Sortie forcée enregistrée pour ${o.nom}`, 'succes');
+    } catch (e) {
+      afficherNotification('Erreur : ' + e.message, 'erreur');
+    }
+  });
+}
+
+/* ─── POINTAGE MANUEL (oubli, pas de réseau, GPS indisponible) ─── */
+const MOTIFS_POINTAGE_MANUEL = {
+  oubli:  'Oubli de pointage',
+  reseau: 'Pas de réseau',
+  gps:    'GPS indisponible',
+  autre:  'Autre',
+};
+const libelleMotifManuel = m => MOTIFS_POINTAGE_MANUEL[m] || 'Saisie manuelle';
+
+function ouvrirPointageManuel(idOuvrier = '') {
+  const sel = $('manuel-ouvrier');
+  sel.innerHTML = '<option value="">Choisir un ouvrier…</option>';
+  [...Stockage.donnees.ouvriers].sort((a,b) => a.nom.localeCompare(b.nom)).forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.id; opt.textContent = o.nom;
+    sel.appendChild(opt);
+  });
+  const selZone = $('manuel-zone');
+  selZone.innerHTML = '<option value="">Aucune zone</option>';
+  Stockage.donnees.zones.forEach(z => {
+    const opt = document.createElement('option');
+    opt.value = z.id; opt.textContent = z.nom;
+    selZone.appendChild(opt);
+  });
+  sel.value = idOuvrier;
+  $('manuel-horodatage').value = versDatetimeLocal(new Date().toISOString());
+  $('manuel-motif').value = 'oubli';
+  proposerValeursPointageManuel();
+  $('dialogue-pointage-manuel').classList.add('ouvert');
+}
+
+// Propose le type logique (sortie si l'ouvrier est présent, sinon entrée)
+// et la zone de sa dernière entrée du jour, s'il y en a une.
+function proposerValeursPointageManuel() {
+  const idOuvrier = $('manuel-ouvrier').value;
+  const dernier = idOuvrier ? dernierPointageDuJour(idOuvrier) : null;
+  $('manuel-type').value = dernier && dernier.type === 'entree' ? 'sortie' : 'entree';
+  const zoneDefaut = dernier?.idZone || (Stockage.donnees.zones.length === 1 ? Stockage.donnees.zones[0].id : '');
+  $('manuel-zone').value = Stockage.donnees.zones.some(z => z.id === zoneDefaut) ? zoneDefaut : '';
+}
+
+function fermerPointageManuel() {
+  $('dialogue-pointage-manuel').classList.remove('ouvert');
+}
+$('dialogue-pointage-manuel').addEventListener('click', e => { if (e.target === $('dialogue-pointage-manuel')) fermerPointageManuel(); });
+
+async function enregistrerPointageManuel() {
+  const idOuvrier = $('manuel-ouvrier').value;
+  const type = $('manuel-type').value;
+  const valeur = $('manuel-horodatage').value;
+  const idZone = $('manuel-zone').value || null;
+  const motifManuel = $('manuel-motif').value;
+
+  if (!idOuvrier) { afficherNotification('Choisissez un ouvrier', 'erreur'); return; }
+  if (type !== 'entree' && type !== 'sortie') { afficherNotification('Choisissez entrée ou sortie', 'erreur'); return; }
+  if (!valeur) { afficherNotification('Indiquez une date et une heure', 'erreur'); return; }
+  const horodatage = new Date(valeur).toISOString();
+  if (new Date(horodatage).getTime() > Date.now() + 60 * 1000) { afficherNotification("L'heure ne peut pas être dans le futur", 'erreur'); return; }
+
+  // Cohérence avec le pointage qui précède le même jour (deux entrées ou deux sorties d'affilée)
+  const jour = jourLocalDe(horodatage);
+  let pointagesJour;
+  try { pointagesJour = await chargerPointagesPeriode(jour, jour); }
+  catch (e) { afficherNotification('Erreur : ' + e.message, 'erreur'); return; }
+  const precedent = pointagesJour
+    .filter(p => p.idOuvrier === idOuvrier && jourLocalDe(p.horodatage) === jour && p.horodatage < horodatage)
+    .sort((a,b) => new Date(a.horodatage) - new Date(b.horodatage))
+    .pop();
+  const incoherent = precedent ? precedent.type === type : type === 'sortie';
+
+  const o = Stockage.donnees.ouvriers.find(x => x.id === idOuvrier);
+  try {
+    await db.collection('pointages').doc(genererId()).set({
+      idOuvrier, type, lat: null, lng: null, horodatage,
+      idZone, dansZone: !!idZone,
+      manuel: true, motifManuel, encodePar: utilisateurActuel.nom, encodeLe: new Date().toISOString()
+    });
+    fermerPointageManuel();
+    if ($('onglet-rapports').classList.contains('actif') && donneesRapport.length) genererRapport();
+    if (incoherent) {
+      afficherNotification(precedent
+        ? `Enregistré, mais ${o ? o.nom : "l'ouvrier"} avait déjà une ${type === 'entree' ? 'entrée' : 'sortie'} à ${formaterHeureCourte(new Date(precedent.horodatage))} ce jour-là — vérifiez dans Rapports`
+        : `Enregistré, mais aucune entrée ne précède cette sortie ce jour-là — vérifiez dans Rapports`, 'alerte');
+    } else {
+      afficherNotification(`${type === 'entree' ? 'Entrée' : 'Sortie'} enregistrée pour ${o ? o.nom : "l'ouvrier"} à ${formaterHeureCourte(new Date(horodatage))}`, 'succes');
+    }
+  } catch (e) {
+    afficherNotification('Erreur : ' + e.message, 'erreur');
+  }
+}
+
+/* ─── COMPTES GESTIONNAIRE (accès administrateur / tiers) ─── */
+function nbAdminsActifs() {
+  return Stockage.donnees.comptes.filter(c => c.admin && c.actif).length;
+}
+
+function afficherComptes() {
+  const el = $('liste-comptes');
+  if (!Stockage.donnees.comptes.length) {
+    el.innerHTML = '<div class="etat-vide"><div class="icone-etat-vide">🔑</div><div class="texte-etat-vide">Aucun accès secondaire. Autorisez un tiers (ex. secrétaire) ci-contre.</div></div>';
+    return;
+  }
+  el.innerHTML = Stockage.donnees.comptes.map(c => {
+    const estSoiMeme = c.id === utilisateurActuel?.id;
+    const peutSupprimer = !estSoiMeme && (!c.admin || nbAdminsActifs() > 1);
+    return `<div class="carte carte-zone">
+      <div class="haut-carte-zone">
+        <div>
+          <div class="nom-zone">${c.admin ? '👑' : '🔑'} ${c.nom}${estSoiMeme ? ' (vous)' : ''}</div>
+          <div class="meta-zone">
+            ${c.admin ? 'Administrateur' : 'Accès gestionnaire'}
+            · <span class="badge ${c.actif ? 'badge-vert' : 'badge-gris'}">${c.actif ? 'Actif' : 'Désactivé'}</span>
+            ${c.empreinte ? '' : '<span class="badge badge-ambre">Mot de passe non défini</span>'}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">
+          <button class="bouton bouton-fantome bouton-petit" onclick="basculerActifCompte('${c.id}')">${c.actif ? 'Désactiver' : 'Activer'}</button>
+          <button class="bouton bouton-fantome bouton-petit" onclick="reinitialiserMotDePasseCompte('${c.id}')">Réinitialiser le mot de passe</button>
+          ${peutSupprimer ? `<button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);" onclick="supprimerCompte('${c.id}')">Supprimer</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function ajouterCompte() {
+  const nom = $('nom-compte').value.trim();
+  if (!nom) { afficherNotification('Indiquez le nom de la personne', 'erreur'); return; }
+  try {
+    await db.collection('comptes').doc(genererId()).set({ nom, empreinte: null, admin: false, actif: true });
+    $('nom-compte').value = '';
+    afficherNotification(`Accès créé pour ${nom} — elle définira son mot de passe à sa première connexion`, 'succes');
+  } catch (e) {
+    afficherNotification('Erreur : ' + e.message, 'erreur');
+  }
+}
+
+function basculerActifCompte(id) {
+  const c = Stockage.donnees.comptes.find(x => x.id === id);
+  if (!c) return;
+  if (c.admin && c.actif && nbAdminsActifs() <= 1) {
+    afficherNotification('Impossible de désactiver le dernier compte administrateur', 'erreur');
+    return;
+  }
+  db.collection('comptes').doc(id).update({ actif: !c.actif })
+    .then(() => afficherNotification(c.actif ? `Accès de ${c.nom} désactivé` : `Accès de ${c.nom} réactivé`, 'succes'))
+    .catch(e => afficherNotification('Erreur : ' + e.message, 'erreur'));
+}
+
+function reinitialiserMotDePasseCompte(id) {
+  const c = Stockage.donnees.comptes.find(x => x.id === id);
+  if (!c) return;
+  ouvrirDialogue('Réinitialiser le mot de passe', `« ${c.nom} » devra définir un nouveau mot de passe à sa prochaine connexion. Continuer ?`, () => {
+    db.collection('comptes').doc(id).update({ empreinte: null })
+      .then(() => afficherNotification('Mot de passe réinitialisé', 'succes'))
+      .catch(e => afficherNotification('Erreur : ' + e.message, 'erreur'));
+  });
+}
+
+function supprimerCompte(id) {
+  const c = Stockage.donnees.comptes.find(x => x.id === id);
+  if (!c) return;
+  if (c.id === utilisateurActuel?.id) { afficherNotification('Impossible de supprimer votre propre compte', 'erreur'); return; }
+  if (c.admin && nbAdminsActifs() <= 1) { afficherNotification('Impossible de supprimer le dernier compte administrateur', 'erreur'); return; }
+  ouvrirDialogue('Supprimer cet accès', `Supprimer définitivement l'accès de « ${c.nom} » ?`, () => {
+    db.collection('comptes').doc(id).delete()
+      .then(() => afficherNotification('Accès supprimé', 'succes'))
+      .catch(e => afficherNotification('Erreur : ' + e.message, 'erreur'));
+  });
+}
+
+/* ─── GESTION DES OUVRIERS ─── */
+function afficherOuvriersGestion() {
+  const el = $('liste-ouvriers-gestion');
+  if (!Stockage.donnees.ouvriers.length) {
+    el.innerHTML = '<div class="etat-vide"><div class="icone-etat-vide">👷</div><div class="texte-etat-vide">Aucun ouvrier enregistré. Ajoutez le premier.</div></div>';
+    return;
+  }
+  el.innerHTML = Stockage.donnees.ouvriers.map(o => `<div class="carte carte-zone">
+      <div class="haut-carte-zone">
+        <div>
+          <div class="nom-zone">👷 ${o.nom}</div>
+          <div class="meta-zone">${o.metier}</div>
+        </div>
+        <button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);flex-shrink:0;" onclick="supprimerOuvrier('${o.id}')">Supprimer</button>
+      </div>
+    </div>`).join('');
+}
+
+async function ajouterOuvrier() {
+  const nom = $('nom-ouvrier').value.trim();
+  const metier = $('metier-ouvrier').value.trim();
+  if (!nom || !metier) {
+    afficherNotification('Veuillez renseigner le nom et le métier', 'erreur');
+    return;
+  }
+  try {
+    await db.collection('ouvriers').doc(genererId()).set({ nom, metier });
+    $('nom-ouvrier').value=''; $('metier-ouvrier').value='';
+    afficherNotification(`Ouvrier « ${nom} » ajouté`, 'succes');
+  } catch (e) {
+    afficherNotification("Erreur lors de l'ajout : " + e.message, 'erreur');
+  }
+}
+
+function supprimerOuvrier(id) {
+  const o = Stockage.donnees.ouvriers.find(x=>x.id===id);
+  ouvrirDialogue('Supprimer l\'ouvrier', `Supprimer « ${o?.nom} » ? Son historique de pointages sera conservé.`, async () => {
+    try {
+      await db.collection('ouvriers').doc(id).delete();
+      afficherNotification('Ouvrier supprimé', 'info');
+    } catch (e) {
+      afficherNotification('Erreur lors de la suppression : ' + e.message, 'erreur');
+    }
+  });
+}
+
+/* ─── ZONES ─── */
+let zoneEnEdition = null;
+
+function afficherZones() {
+  const el = $('liste-zones');
+  if (!Stockage.donnees.zones.length) {
+    el.innerHTML = '<div class="etat-vide"><div class="icone-etat-vide">📍</div><div class="texte-etat-vide">Aucune zone définie. Ajoutez votre premier chantier.</div></div>';
+    return;
+  }
+  el.innerHTML = Stockage.donnees.zones.map(z => {
+    const aujourdhui = dateAujourdhui();
+    const ouvriersPresents = Stockage.donnees.ouvriers.filter(o => {
+      const pointages = Stockage.donnees.pointages
+        .filter(p=>p.idOuvrier===o.id && jourLocalDe(p.horodatage) === aujourdhui)
+        .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+      const dernier = pointages[pointages.length-1];
+      return dernier && dernier.type==='entree' && dernier.idZone===z.id;
+    });
+    const puces = ouvriersPresents.length
+      ? ouvriersPresents.map(o=>`<span class="puce-ouvrier-zone" style="border-color:${couleurAvatar(o.nom)}33;">${o.nom}</span>`).join('')
+      : '<span style="font-size:12px;color:var(--texte-3);">Personne en ce moment</span>';
+    return `<div class="carte carte-zone">
+      <div class="haut-carte-zone">
+        <div>
+          <div class="nom-zone">📍 ${z.nom}</div>
+          <div class="meta-zone">Rayon ${z.rayon}m · ${z.lat.toFixed(4)}°N, ${z.lng.toFixed(4)}°E</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="bouton bouton-fantome bouton-petit" onclick="modifierZone('${z.id}')">Modifier</button>
+          <button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);" onclick="supprimerZone('${z.id}')">Supprimer</button>
+        </div>
+      </div>
+      <div class="ouvriers-zone">${puces}</div>
+    </div>`;
+  }).join('');
+}
+
+function modifierZone(id) {
+  const z = Stockage.donnees.zones.find(x=>x.id===id);
+  if (!z) return;
+  zoneEnEdition = id;
+  $('nom-zone').value = z.nom;
+  $('adresse-zone').value = '';
+  $('adresse-zone-statut').textContent = 'Laissez vide pour garder les coordonnées actuelles, ou recherchez une nouvelle adresse';
+  $('lat-zone').value = z.lat;
+  $('lng-zone').value = z.lng;
+  $('rayon-zone').value = z.rayon;
+  $('titre-ajout-zone').textContent = '✏️ Modifier la zone';
+  $('bouton-enregistrer-zone').textContent = 'Enregistrer les modifications';
+  $('bouton-annuler-modif-zone').style.display = '';
+  $('nom-zone').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function annulerModifierZone() {
+  reinitialiserFormulaireZone();
+}
+
+function reinitialiserFormulaireZone() {
+  zoneEnEdition = null;
+  $('nom-zone').value=''; $('lat-zone').value=''; $('lng-zone').value=''; $('rayon-zone').value='';
+  $('adresse-zone').value = '';
+  $('adresse-zone-statut').textContent = 'Recherche via OpenStreetMap · remplit automatiquement lat/long ci-dessous';
+  $('titre-ajout-zone').textContent = '➕ Ajouter une zone';
+  $('bouton-enregistrer-zone').textContent = 'Ajouter la zone';
+  $('bouton-annuler-modif-zone').style.display = 'none';
+}
+
+async function enregistrerZone() {
+  const nom = $('nom-zone').value.trim();
+  const lat = parseFloat($('lat-zone').value);
+  const lng = parseFloat($('lng-zone').value);
+  const rayon = parseInt($('rayon-zone').value);
+  if (!nom||isNaN(lat)||isNaN(lng)||isNaN(rayon)||rayon<10) {
+    afficherNotification('Veuillez remplir tous les champs correctement', 'erreur');
+    return;
+  }
+  if (lat<-90||lat>90||lng<-180||lng>180) {
+    afficherNotification('Coordonnées GPS invalides', 'erreur');
+    return;
+  }
+  try {
+    if (zoneEnEdition) {
+      await db.collection('zones').doc(zoneEnEdition).update({ nom, lat, lng, rayon });
+      reinitialiserFormulaireZone();
+      afficherNotification(`Zone « ${nom} » modifiée`, 'succes');
+    } else {
+      await db.collection('zones').doc(genererId()).set({ nom, lat, lng, rayon });
+      reinitialiserFormulaireZone();
+      afficherNotification(`Zone « ${nom} » ajoutée`, 'succes');
+    }
+  } catch (e) {
+    afficherNotification('Erreur : ' + e.message, 'erreur');
+  }
+}
+
+function supprimerZone(id) {
+  const z = Stockage.donnees.zones.find(x=>x.id===id);
+  ouvrirDialogue('Supprimer la zone', `Supprimer « ${z?.nom} » ? Les pointages existants ne seront pas affectés.`, async () => {
+    try {
+      await db.collection('zones').doc(id).delete();
+      if (zoneEnEdition === id) reinitialiserFormulaireZone();
+      afficherNotification('Zone supprimée', 'info');
+    } catch (e) {
+      afficherNotification('Erreur : ' + e.message, 'erreur');
+    }
+  });
+}
+
+function utiliserPositionActuelle() {
+  if (!navigator.geolocation) { afficherNotification('GPS non disponible', 'erreur'); return; }
+  afficherNotification('Récupération de la position…', 'info');
+  navigator.geolocation.getCurrentPosition(pos => {
+    $('lat-zone').value = pos.coords.latitude.toFixed(6);
+    $('lng-zone').value = pos.coords.longitude.toFixed(6);
+    afficherNotification('Position récupérée', 'succes');
+  }, () => {
+    // Repli : centre de Bruxelles
+    $('lat-zone').value = '50.8503';
+    $('lng-zone').value = '4.3517';
+    afficherNotification('GPS indisponible — position par défaut (Bruxelles)', 'alerte');
+  });
+}
+
+async function rechercherAdresse() {
+  const adresse = $('adresse-zone').value.trim();
+  if (!adresse) {
+    afficherNotification('Veuillez saisir une adresse', 'erreur');
+    return;
+  }
+  const statut = $('adresse-zone-statut');
+  const bouton = $('bouton-recherche-adresse');
+  statut.textContent = 'Recherche en cours…';
+  bouton.disabled = true;
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(adresse)}`;
+    const reponse = await fetch(url, { headers: { 'Accept-Language': 'fr' } });
+    const resultats = await reponse.json();
+    if (!resultats.length) {
+      statut.textContent = 'Adresse introuvable — précisez la ville ou le code postal';
+      afficherNotification('Adresse introuvable', 'erreur');
+      return;
+    }
+    const r = resultats[0];
+    $('lat-zone').value = parseFloat(r.lat).toFixed(6);
+    $('lng-zone').value = parseFloat(r.lon).toFixed(6);
+    statut.textContent = `✓ ${r.display_name}`;
+    if (!$('nom-zone').value.trim()) $('nom-zone').value = adresse;
+    afficherNotification('Adresse localisée', 'succes');
+  } catch (e) {
+    statut.textContent = 'Erreur réseau lors de la recherche';
+    afficherNotification('Erreur réseau lors de la recherche d\'adresse', 'erreur');
+  } finally {
+    bouton.disabled = false;
+  }
+}
+
+/* ─── ABSENCES ─── */
+const TYPES_ABSENCE = {
+  maladie:      { libelle: 'Maladie',             icone: '🤒', badge: 'badge-rouge', excel: 'FFB91C1C' },
+  conge:        { libelle: 'Congé',               icone: '🏖️', badge: 'badge-bleu',  excel: 'FF1D4ED8' },
+  recuperation: { libelle: 'Récupération',        icone: '🔄', badge: 'badge-bleu',  excel: 'FF0F766E' },
+  formation:    { libelle: 'Formation',           icone: '🎓', badge: 'badge-vert',  excel: 'FF15803D' },
+  accident:     { libelle: 'Accident de travail', icone: '🚑', badge: 'badge-rouge', excel: 'FFB91C1C' },
+  chomage_economique:  { libelle: 'Chômage économique',  icone: '📉', badge: 'badge-gris', excel: 'FF475569' },
+  chomage_intemperies: { libelle: 'Chômage intempéries', icone: '🌧️', badge: 'badge-gris', excel: 'FF475569' },
+  a_justifier:  { libelle: 'Absence à justifier', icone: '❓', badge: 'badge-ambre', excel: 'FFD97706' },
+};
+const typeAbsence = type => TYPES_ABSENCE[type] || { libelle: type, icone: '•', badge: 'badge-gris', excel: 'FF475569' };
+const badgeAbsence = type => { const t = typeAbsence(type); return `<span class="badge ${t.badge}">${t.icone} ${t.libelle}</span>`; };
+
+// Les absences sont stockées par jour local (AAAA-MM-JJ), bornes incluses :
+// une comparaison de chaînes suffit.
+function absenceDuJour(idOuvrier, jour) {
+  return Stockage.donnees.absences.find(a => a.idOuvrier === idOuvrier && a.du <= jour && jour <= a.au) || null;
+}
+
+function libellePeriodeAbsence(a) {
+  return a.du === a.au
+    ? `Le ${formaterDateCourte(dateDepuisLocale(a.du))}`
+    : `Du ${formaterDateCourte(dateDepuisLocale(a.du))} au ${formaterDateCourte(dateDepuisLocale(a.au))}`;
+}
+
+// Jours ouvrables (lundi → vendredi) entre deux jours locaux inclus
+function joursOuvrables(du, au) {
+  let n = 0;
+  for (let d = dateDepuisLocale(du); dateLocale(d) <= au; d.setDate(d.getDate() + 1)) {
+    const j = d.getDay();
+    if (j !== 0 && j !== 6) n++;
+  }
+  return n;
+}
+
+let absenceEnEdition = null;
+
+function remplirOuvriersAbsence() {
+  const sel = $('absence-ouvrier');
+  const valeur = sel.value;
+  sel.innerHTML = '<option value="">Choisir un ouvrier…</option>';
+  [...Stockage.donnees.ouvriers].sort((a,b) => a.nom.localeCompare(b.nom)).forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.id; opt.textContent = o.nom;
+    sel.appendChild(opt);
+  });
+  sel.value = valeur;
+}
+
+function afficherAbsences() {
+  const el = $('liste-absences');
+  const aujourdhui = dateAujourdhui();
+  const toutes = $('filtre-absences').value === 'toutes';
+  const absences = Stockage.donnees.absences
+    .filter(a => toutes || a.au >= aujourdhui)
+    .sort((a,b) => toutes ? (a.du < b.du ? 1 : a.du > b.du ? -1 : 0) : (a.du < b.du ? -1 : a.du > b.du ? 1 : 0));
+
+  if (!absences.length) {
+    el.innerHTML = `<div class="etat-vide"><div class="icone-etat-vide">🗓️</div><div class="texte-etat-vide">${toutes ? 'Aucune absence encodée.' : 'Aucune absence en cours ou à venir.'}</div></div>`;
+    return;
+  }
+  el.innerHTML = absences.map(a => {
+    const o = Stockage.donnees.ouvriers.find(x => x.id === a.idOuvrier);
+    const enCours = a.du <= aujourdhui && aujourdhui <= a.au;
+    const nbJours = joursOuvrables(a.du, a.au);
+    return `<div class="carte carte-zone">
+      <div class="haut-carte-zone">
+        <div>
+          <div class="nom-zone">${o ? o.nom : '<span style="color:var(--texte-3);">Ouvrier supprimé</span>'}</div>
+          <div class="meta-zone">${libellePeriodeAbsence(a)} · ${nbJours} jour${nbJours > 1 ? 's' : ''} ouvrable${nbJours > 1 ? 's' : ''}${enCours ? ' · <strong>en cours</strong>' : ''}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="bouton bouton-fantome bouton-petit" onclick="modifierAbsence('${a.id}')">Modifier</button>
+          <button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);" onclick="supprimerAbsence('${a.id}')">Supprimer</button>
+        </div>
+      </div>
+      <div class="ouvriers-zone">
+        ${badgeAbsence(a.type)}
+        ${a.commentaire ? `<span style="font-size:12px;color:var(--texte-2);">${echapperHtml(a.commentaire)}</span>` : ''}
+      </div>
+      <div class="astuce-formulaire" style="margin-top:8px;">Encodé par ${echapperHtml(a.creePar || '—')}${a.modifiePar ? ` · modifié par ${echapperHtml(a.modifiePar)}` : ''}</div>
+    </div>`;
+  }).join('');
+}
+
+function reinitialiserFormulaireAbsence() {
+  absenceEnEdition = null;
+  $('absence-ouvrier').value = '';
+  $('absence-type').value = 'maladie';
+  $('absence-du').value = dateAujourdhui();
+  $('absence-au').value = dateAujourdhui();
+  $('absence-commentaire').value = '';
+  $('titre-ajout-absence').textContent = '➕ Encoder une absence';
+  $('bouton-enregistrer-absence').textContent = "Enregistrer l'absence";
+  $('bouton-annuler-modif-absence').style.display = 'none';
+}
+
+function synchroniserDatesAbsence() {
+  // Facilite l'encodage d'un seul jour : la date de fin suit la date de début
+  if (!$('absence-au').value || $('absence-au').value < $('absence-du').value) $('absence-au').value = $('absence-du').value;
+}
+
+function modifierAbsence(id) {
+  const a = Stockage.donnees.absences.find(x => x.id === id);
+  if (!a) return;
+  absenceEnEdition = id;
+  $('absence-ouvrier').value = a.idOuvrier;
+  $('absence-type').value = a.type;
+  $('absence-du').value = a.du;
+  $('absence-au').value = a.au;
+  $('absence-commentaire').value = a.commentaire || '';
+  $('titre-ajout-absence').textContent = "✏️ Modifier l'absence";
+  $('bouton-enregistrer-absence').textContent = 'Enregistrer les modifications';
+  $('bouton-annuler-modif-absence').style.display = '';
+  $('absence-ouvrier').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function enregistrerAbsence() {
+  const idOuvrier = $('absence-ouvrier').value;
+  const type = $('absence-type').value;
+  const du = $('absence-du').value;
+  const au = $('absence-au').value;
+  const commentaire = $('absence-commentaire').value.trim();
+
+  if (!idOuvrier) { afficherNotification('Choisissez un ouvrier', 'erreur'); return; }
+  if (!TYPES_ABSENCE[type]) { afficherNotification("Choisissez un type d'absence", 'erreur'); return; }
+  if (!du || !au || du > au) { afficherNotification('Sélectionnez une période valide', 'erreur'); return; }
+
+  const chevauchement = Stockage.donnees.absences.find(a =>
+    a.id !== absenceEnEdition && a.idOuvrier === idOuvrier && a.du <= au && du <= a.au);
+  if (chevauchement) {
+    afficherNotification(`Chevauche une absence existante (${typeAbsence(chevauchement.type).libelle}, ${libellePeriodeAbsence(chevauchement).toLowerCase()})`, 'erreur');
+    return;
+  }
+
+  const o = Stockage.donnees.ouvriers.find(x => x.id === idOuvrier);
+  try {
+    if (absenceEnEdition) {
+      await db.collection('absences').doc(absenceEnEdition).update({
+        idOuvrier, type, du, au, commentaire,
+        modifiePar: utilisateurActuel.nom, modifieLe: new Date().toISOString()
+      });
+      afficherNotification('Absence modifiée', 'succes');
+    } else {
+      await db.collection('absences').doc(genererId()).set({
+        idOuvrier, type, du, au, commentaire,
+        creePar: utilisateurActuel.nom, creeLe: new Date().toISOString()
+      });
+      afficherNotification(`${typeAbsence(type).libelle} encodé(e) pour ${o ? o.nom : "l'ouvrier"}`, 'succes');
+    }
+    reinitialiserFormulaireAbsence();
+  } catch (e) {
+    afficherNotification('Erreur : ' + e.message, 'erreur');
+  }
+}
+
+function supprimerAbsence(id) {
+  const a = Stockage.donnees.absences.find(x => x.id === id);
+  if (!a) return;
+  const o = Stockage.donnees.ouvriers.find(x => x.id === a.idOuvrier);
+  ouvrirDialogue("Supprimer l'absence",
+    `Supprimer « ${typeAbsence(a.type).libelle} » de ${o ? o.nom : 'cet ouvrier'} (${libellePeriodeAbsence(a).toLowerCase()}) ?`,
+    async () => {
+      try {
+        await db.collection('absences').doc(id).delete();
+        if (absenceEnEdition === id) reinitialiserFormulaireAbsence();
+        afficherNotification('Absence supprimée', 'info');
+      } catch (e) {
+        afficherNotification('Erreur : ' + e.message, 'erreur');
+      }
+    });
+}
+
+/* ─── RAPPORTS ─── */
+let donneesRapport = [];
+let pointagesRapport = []; // pointages de la période du dernier rapport (chargés à la demande)
+
+// Un pointage affiché dans un rapport peut être plus ancien que la fenêtre écoutée en direct
+function trouverPointage(id) {
+  return Stockage.donnees.pointages.find(x => x.id === id) || pointagesRapport.find(x => x.id === id);
+}
+let donneesTotauxZone = [];
+let donneesAbsencesRapport = [];
+
+function initialiserDatesRapport() {
+  const maintenant = new Date();
+  const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1);
+  $('rapport-du').value = dateLocale(debutMois);
+  $('rapport-au').value = dateAujourdhui();
+}
+
+function remplirOuvriersRapport() {
+  const sel = $('rapport-ouvrier');
+  sel.innerHTML = '<option value="">Tous les ouvriers</option>';
+  Stockage.donnees.ouvriers.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.id; opt.textContent = o.nom;
+    sel.appendChild(opt);
+  });
+}
+
+async function genererRapport() {
+  const du = $('rapport-du').value;
+  const au = $('rapport-au').value;
+  const idOuvrier = $('rapport-ouvrier').value;
+
+  if (!du||!au||du>au) { afficherNotification('Sélectionnez une période valide', 'erreur'); return; }
+  try {
+    pointagesRapport = await chargerPointagesPeriode(du, au);
+  } catch (e) {
+    afficherNotification('Chargement des pointages impossible : ' + e.message, 'erreur');
+    return;
+  }
+
+  const ouvriers = idOuvrier ? Stockage.donnees.ouvriers.filter(o=>o.id===idOuvrier) : Stockage.donnees.ouvriers;
+  donneesRapport = [];
+  const totauxParCle = new Map(); // clé: ouvrierId|jour|zoneId — somme des sessions ce jour-là dans cette zone
+
+  // Un pointage = une ligne (pas un résumé par jour), pour ne pas masquer les allers-retours réels
+  for (const o of ouvriers) {
+    const pointages = pointagesRapport
+      .filter(p => p.idOuvrier===o.id && jourLocalDe(p.horodatage) >= du && jourLocalDe(p.horodatage) <= au)
+      .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+
+    pointages.forEach((p, i) => {
+      const zone = p.idZone ? Stockage.donnees.zones.find(z=>z.id===p.idZone) : null;
+      const precedent = pointages[i-1];
+      const duree = (p.type==='sortie' && precedent && precedent.type==='entree')
+        ? new Date(p.horodatage) - new Date(precedent.horodatage)
+        : null;
+      donneesRapport.push({ ouvrier: o, pointage: p, zone, duree });
+
+      if (duree != null) {
+        const jour = jourLocalDe(p.horodatage);
+        const zonePrecedente = precedent.idZone ? Stockage.donnees.zones.find(z=>z.id===precedent.idZone) : null;
+        const cle = `${o.id}|${jour}|${precedent.idZone || 'aucune'}`;
+        if (!totauxParCle.has(cle)) totauxParCle.set(cle, { ouvrier: o, jour, zone: zonePrecedente, total: 0 });
+        totauxParCle.get(cle).total += duree;
+      }
+    });
+  }
+
+  donneesTotauxZone = [...totauxParCle.values()].sort((a,b) =>
+    a.ouvrier.nom !== b.ouvrier.nom ? a.ouvrier.nom.localeCompare(b.ouvrier.nom) :
+    a.jour !== b.jour ? (a.jour < b.jour ? -1 : 1) :
+    (a.zone?.nom || '').localeCompare(b.zone?.nom || '')
+  );
+
+  const corpsTotaux = $('corps-totaux-zone');
+  corpsTotaux.innerHTML = donneesTotauxZone.length ? donneesTotauxZone.map(t => `
+    <tr>
+      <td><div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:24px;height:24px;border-radius:50%;background:${couleurAvatar(t.ouvrier.nom)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;font-family:var(--police-titre);flex-shrink:0;">${initiales(t.ouvrier.nom)}</div>
+        <span style="font-weight:500;">${t.ouvrier.nom}</span>
+      </div></td>
+      <td>${formaterDateCourte(dateDepuisLocale(t.jour))}</td>
+      <td>${t.zone?t.zone.nom:'<span style="color:var(--texte-3);">Aucune zone</span>'}</td>
+      <td><span style="font-weight:600;">${formaterDuree(t.total)}</span></td>
+    </tr>
+  `).join('') : '<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--texte-3);">Aucun pointage pour cette période</td></tr>';
+
+  // Absences qui recoupent la période, bornées à celle-ci pour le décompte des jours
+  const idsOuvriers = new Set(ouvriers.map(o => o.id));
+  donneesAbsencesRapport = Stockage.donnees.absences
+    .filter(a => idsOuvriers.has(a.idOuvrier) && a.du <= au && du <= a.au)
+    .map(a => {
+      const debut = a.du > du ? a.du : du, fin = a.au < au ? a.au : au;
+      return { absence: a, ouvrier: ouvriers.find(o => o.id === a.idOuvrier), debut, fin, jours: joursOuvrables(debut, fin) };
+    })
+    .sort((a,b) => a.ouvrier.nom !== b.ouvrier.nom ? a.ouvrier.nom.localeCompare(b.ouvrier.nom) : (a.debut < b.debut ? -1 : 1));
+
+  $('corps-absences-rapport').innerHTML = donneesAbsencesRapport.length ? donneesAbsencesRapport.map(r => `
+    <tr>
+      <td><div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:24px;height:24px;border-radius:50%;background:${couleurAvatar(r.ouvrier.nom)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;font-family:var(--police-titre);flex-shrink:0;">${initiales(r.ouvrier.nom)}</div>
+        <span style="font-weight:500;">${r.ouvrier.nom}</span>
+      </div></td>
+      <td>${badgeAbsence(r.absence.type)}</td>
+      <td>${formaterDateCourte(dateDepuisLocale(r.debut))}</td>
+      <td>${formaterDateCourte(dateDepuisLocale(r.fin))}</td>
+      <td><span style="font-weight:600;">${r.jours}</span></td>
+      <td>${r.absence.commentaire ? echapperHtml(r.absence.commentaire) : '<span style="color:var(--texte-3);">—</span>'}</td>
+    </tr>
+  `).join('') : '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--texte-3);">Aucune absence pour cette période</td></tr>';
+
+  const corps = $('corps-rapport');
+  if (!donneesRapport.length) {
+    corps.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--texte-3);">Aucun pointage pour cette période</td></tr>';
+    $('bouton-export').style.display = donneesAbsencesRapport.length ? '' : 'none';
+    return;
+  }
+
+  corps.innerHTML = donneesRapport.map(r => {
+    const p = r.pointage;
+    const estEntree = p.type === 'entree';
+    const horsZone = !p.forcee && !p.automatique && !p.manuel && !p.dansZone && Stockage.donnees.zones.length > 0;
+    return `
+    <tr>
+      <td><div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:24px;height:24px;border-radius:50%;background:${couleurAvatar(r.ouvrier.nom)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;font-family:var(--police-titre);flex-shrink:0;">${initiales(r.ouvrier.nom)}</div>
+        <span style="font-weight:500;">${r.ouvrier.nom}</span>
+      </div></td>
+      <td>${formaterDateCourte(new Date(p.horodatage))}</td>
+      <td>${formaterHeureCourte(new Date(p.horodatage))}</td>
+      <td><span style="font-weight:600;color:${estEntree?'var(--vert)':'var(--rouge)'};">${estEntree?'⬆️ Entrée':'⬇️ Sortie'}</span></td>
+      <td>${r.zone?r.zone.nom:'<span style="color:var(--texte-3);">—</span>'}</td>
+      <td>${r.duree!=null?`<span style="font-weight:600;">${formaterDuree(r.duree)}</span>`:'<span style="color:var(--texte-3);">—</span>'}</td>
+      <td>${p.forcee
+        ? '<span class="badge badge-bleu">Sortie forcée</span>'
+        : p.manuel
+          ? `<span class="badge badge-bleu" title="${echapperHtml(`${libelleMotifManuel(p.motifManuel)} · saisi par ${p.encodePar || '—'}`)}">✍️ Saisie manuelle</span>`
+        : p.automatique
+          ? '<span class="badge badge-bleu">Sortie automatique</span>'
+          : horsZone
+            ? '<span class="badge badge-ambre">⚠️ Hors zone</span>'
+            : '<span class="badge badge-vert">✓ OK</span>'}</td>
+      <td><div style="display:flex;gap:4px;">
+        <button class="bouton bouton-fantome bouton-petit" title="Modifier l'heure" onclick="ouvrirModifPointage('${p.id}')">✏️</button>
+        <button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);" title="Supprimer" onclick="supprimerPointage('${p.id}')">🗑️</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+  $('bouton-export').style.display='';
+  afficherNotification(`${donneesRapport.length} pointage(s) et ${donneesAbsencesRapport.length} absence(s) trouvé(s)`, 'succes');
+}
+
+function versDatetimeLocal(iso) {
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+let pointageEnEdition = null;
+
+function ouvrirModifPointage(id) {
+  const p = trouverPointage(id);
+  if (!p) return;
+  const o = Stockage.donnees.ouvriers.find(x => x.id === p.idOuvrier);
+  pointageEnEdition = id;
+  $('contexte-modif-pointage').textContent = `${p.type === 'entree' ? 'Entrée' : 'Sortie'} de ${o ? o.nom : 'ouvrier supprimé'}`;
+  $('horodatage-modif-pointage').value = versDatetimeLocal(p.horodatage);
+  $('dialogue-pointage').classList.add('ouvert');
+}
+
+function fermerModifPointage() {
+  $('dialogue-pointage').classList.remove('ouvert');
+  pointageEnEdition = null;
+}
+$('dialogue-pointage').addEventListener('click', e => { if (e.target === $('dialogue-pointage')) fermerModifPointage(); });
+
+async function enregistrerModifPointage() {
+  if (!pointageEnEdition) return;
+  const valeur = $('horodatage-modif-pointage').value;
+  if (!valeur) { afficherNotification('Indiquez une date et une heure', 'erreur'); return; }
+  try {
+    await db.collection('pointages').doc(pointageEnEdition).update({ horodatage: new Date(valeur).toISOString() });
+    afficherNotification('Pointage modifié', 'succes');
+    fermerModifPointage();
+    genererRapport();
+  } catch (e) {
+    afficherNotification('Erreur : ' + e.message, 'erreur');
+  }
+}
+
+function supprimerPointage(id) {
+  const p = trouverPointage(id);
+  if (!p) return;
+  const o = Stockage.donnees.ouvriers.find(x => x.id === p.idOuvrier);
+  ouvrirDialogue(
+    'Supprimer ce pointage',
+    `Supprimer définitivement ${p.type === 'entree' ? "l'entrée" : 'la sortie'} de ${o ? o.nom : 'cet ouvrier'} du ${formaterDateCourte(new Date(p.horodatage))} à ${formaterHeureCourte(new Date(p.horodatage))} ? Cette action est irréversible.`,
+    async () => {
+      try {
+        await db.collection('pointages').doc(id).delete();
+        afficherNotification('Pointage supprimé', 'info');
+        genererRapport();
+      } catch (e) {
+        afficherNotification('Erreur : ' + e.message, 'erreur');
+      }
+    }
+  );
+}
+
+function preparerFeuilleRapport(classeur, nom, titreTexte, colonnes, derniereColonneLettre) {
+  const feuille = classeur.addWorksheet(nom, { views: [{ state: 'frozen', ySplit: 3 }] });
+  // Définir les colonnes écrit aussi des en-têtes en ligne 1 : le titre (écrit après,
+  // dans la cellule fusionnée) doit donc être posé APRÈS, sans quoi il se fait écraser.
+  feuille.columns = colonnes;
+  feuille.mergeCells(`A1:${derniereColonneLettre}1`);
+  const titre = feuille.getCell('A1');
+  titre.value = titreTexte;
+  titre.font = { size: 13, bold: true, color: { argb: 'FF1E293B' } };
+  titre.alignment = { vertical: 'middle' };
+  feuille.getRow(1).height = 26;
+  feuille.getRow(2).height = 6;
+
+  const ligneEntetes = feuille.getRow(3);
+  feuille.columns.forEach((col, i) => { ligneEntetes.getCell(i+1).value = col.header; });
+  ligneEntetes.eachCell(cellule => {
+    cellule.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cellule.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD7231E' } };
+    cellule.alignment = { vertical: 'middle', horizontal: 'left' };
+    cellule.border = { bottom: { style: 'thin', color: { argb: 'FFA8170F' } } };
+  });
+  ligneEntetes.height = 20;
+  return feuille;
+}
+
+function styliserLignesRapport(feuille, derniereColonneLettre) {
+  feuille.eachRow((ligne, num) => {
+    if (num < 3) return;
+    ligne.eachCell({ includeEmpty: true }, cellule => {
+      cellule.border = { bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+      if (num % 2 === 0) {
+        cellule.fill = cellule.fill?.fgColor ? cellule.fill : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+      }
+    });
+  });
+  feuille.autoFilter = { from: 'A3', to: `${derniereColonneLettre}3` };
+}
+
+async function exporterExcel() {
+  if (!donneesRapport.length && !donneesAbsencesRapport.length) return;
+
+  const classeur = new ExcelJS.Workbook();
+  classeur.creator = 'PointagePro DMD Frères ASBESTOS';
+  classeur.created = new Date();
+  const titrePeriode = `du ${formaterDateCourte(new Date($('rapport-du').value))} au ${formaterDateCourte(new Date($('rapport-au').value))}`;
+
+  const feuilleTotaux = preparerFeuilleRapport(classeur, 'Totaux par zone',
+    `Totaux par jour et par zone — ${titrePeriode}`,
+    [
+      { header: 'Ouvrier',      key: 'ouvrier', width: 24 },
+      { header: 'Date',         key: 'date',    width: 13 },
+      { header: 'Zone',         key: 'zone',    width: 24 },
+      { header: 'Temps total',  key: 'total',   width: 14 },
+    ], 'D');
+  donneesTotauxZone.forEach(t => {
+    feuilleTotaux.addRow({
+      ouvrier: t.ouvrier.nom,
+      date: formaterDateCourte(dateDepuisLocale(t.jour)),
+      zone: t.zone ? t.zone.nom : 'Aucune zone',
+      total: formaterDuree(t.total),
+    });
+  });
+  styliserLignesRapport(feuilleTotaux, 'D');
+
+  const feuille = preparerFeuilleRapport(classeur, 'Pointages',
+    `Rapport de pointages — ${titrePeriode}`,
+    [
+      { header: 'Ouvrier',        key: 'ouvrier',  width: 24 },
+      { header: 'Métier',         key: 'metier',   width: 18 },
+      { header: 'Date',           key: 'date',     width: 13 },
+      { header: 'Heure',          key: 'heure',    width: 10 },
+      { header: 'Type',           key: 'type',     width: 11 },
+      { header: 'Zone',           key: 'zone',     width: 20 },
+      { header: 'Durée session',  key: 'duree',    width: 14 },
+      { header: 'Statut',         key: 'statut',   width: 14 },
+    ], 'H');
+
+  donneesRapport.forEach(r => {
+    const p = r.pointage;
+    const estEntree = p.type === 'entree';
+    const horsZone = !p.forcee && !p.automatique && !p.manuel && !p.dansZone && Stockage.donnees.zones.length > 0;
+    const statut = p.forcee ? 'Sortie forcée' : p.manuel ? `Saisie manuelle (${libelleMotifManuel(p.motifManuel).toLowerCase()})` : p.automatique ? 'Sortie automatique' : (horsZone ? 'Hors zone' : 'OK');
+    const ligne = feuille.addRow({
+      ouvrier: r.ouvrier.nom,
+      metier: r.ouvrier.metier || '',
+      date: formaterDateCourte(new Date(p.horodatage)),
+      heure: formaterHeureCourte(new Date(p.horodatage)),
+      type: estEntree ? 'Entrée' : 'Sortie',
+      zone: r.zone ? r.zone.nom : '',
+      duree: r.duree != null ? formaterDuree(r.duree) : '',
+      statut,
+    });
+    const celluleType = ligne.getCell('type');
+    celluleType.font = { color: { argb: estEntree ? 'FF15803D' : 'FFB91C1C' }, bold: true };
+    const celluleStatut = ligne.getCell('statut');
+    if (statut === 'OK') {
+      celluleStatut.font = { color: { argb: 'FF15803D' }, bold: true };
+      celluleStatut.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+    } else if (statut === 'Hors zone') {
+      celluleStatut.font = { color: { argb: 'FFD97706' }, bold: true };
+      celluleStatut.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } };
+    } else {
+      celluleStatut.font = { color: { argb: 'FFD7231E' }, bold: true };
+      celluleStatut.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF1F2' } };
+    }
+  });
+
+  styliserLignesRapport(feuille, 'H');
+
+  const feuilleAbsences = preparerFeuilleRapport(classeur, 'Absences',
+    `Absences — ${titrePeriode}`,
+    [
+      { header: 'Ouvrier',          key: 'ouvrier',     width: 24 },
+      { header: 'Type',             key: 'type',        width: 22 },
+      { header: 'Du',               key: 'du',          width: 13 },
+      { header: 'Au',               key: 'au',          width: 13 },
+      { header: 'Jours ouvrables',  key: 'jours',       width: 16 },
+      { header: 'Commentaire',      key: 'commentaire', width: 36 },
+      { header: 'Encodé par',       key: 'creePar',     width: 18 },
+    ], 'G');
+  donneesAbsencesRapport.forEach(r => {
+    const t = typeAbsence(r.absence.type);
+    const ligne = feuilleAbsences.addRow({
+      ouvrier: r.ouvrier.nom,
+      type: t.libelle,
+      du: formaterDateCourte(dateDepuisLocale(r.debut)),
+      au: formaterDateCourte(dateDepuisLocale(r.fin)),
+      jours: r.jours,
+      commentaire: r.absence.commentaire || '',
+      creePar: r.absence.creePar || '',
+    });
+    ligne.getCell('type').font = { color: { argb: t.excel }, bold: true };
+  });
+  styliserLignesRapport(feuilleAbsences, 'G');
+
+  const tampon = await classeur.xlsx.writeBuffer();
+  const blob = new Blob([tampon], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `pointages_${$('rapport-du').value}_${$('rapport-au').value}.xlsx`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+  afficherNotification('Rapport Excel téléchargé', 'succes');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INITIALISATION
+═══════════════════════════════════════════════════════════ */
+firebase.auth().onAuthStateChanged(u => { if (u) demarrerSynchronisation(); });
+firebase.auth().signInAnonymously().catch(err => {
+  console.error('Authentification anonyme impossible :', err);
+  afficherNotification('Connexion au serveur impossible — vérifiez votre connexion internet', 'erreur');
+});
+
+const session = chargerSession();
+if (session) {
+  utilisateurActuel = session;
+  if (utilisateurActuel.role==='gestionnaire') afficherVueGestionnaire();
+  else afficherVueOuvrier();
+} else {
+  afficherVue('connexion');
+}
+
+// Redessiner le radar au changement de thème
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', ()=>{
+  if (utilisateurActuel?.role==='ouvrier' && GPS.position) {
+    const resultat = GPS.zoneLaPlusProche(GPS.position.lat, GPS.position.lng);
+    if (resultat) dessinerRadar(GPS.position, resultat); else dessinerRadarSansGPS();
+  }
+});

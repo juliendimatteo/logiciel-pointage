@@ -161,7 +161,13 @@ function demarrerSynchronisation() {
     rafraichirSelonContexte();
   }, 'zones');
 
-  ecouter(db.collection('pointages'), snap => {
+  // Quota Firestore : chaque document reçu compte comme une lecture. On
+  // n'écoute en direct que les pointages récents (depuis hier 00:00), qui
+  // suffisent au statut du jour ; les rapports chargent leur période à la
+  // demande (chargerPointagesPeriode). Écouter tout l'historique faisait
+  // relire des milliers de pointages à chaque ouverture de l'app.
+  const debutFenetre = new Date(); debutFenetre.setHours(0,0,0,0); debutFenetre.setDate(debutFenetre.getDate()-1);
+  ecouter(db.collection('pointages').where('horodatage', '>=', debutFenetre.toISOString()), snap => {
     Stockage.donnees.pointages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     rafraichirSelonContexte();
   }, 'pointages');
@@ -200,6 +206,17 @@ function demarrerSynchronisation() {
   }
 
   demarrerSurveillancePassive();
+}
+
+// Pointages des jours du..au (AAAA-MM-JJ, bornes incluses, heure locale),
+// lus une seule fois : pour les rapports et les périodes hors de la fenêtre écoutée.
+async function chargerPointagesPeriode(du, au) {
+  const fin = dateDepuisLocale(au); fin.setDate(fin.getDate()+1);
+  const snap = await db.collection('pointages')
+    .where('horodatage', '>=', dateDepuisLocale(du).toISOString())
+    .where('horodatage', '<', fin.toISOString())
+    .get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 function rafraichirSelonContexte() {
@@ -394,7 +411,7 @@ async function effectuerAutoDepointage() {
    Ce filet de secours tourne dans les sessions GESTIONNAIRE (seules
    autorisées à lire les positions des ouvriers) : toutes les
    INTERVALLE_VERIFICATION_RETARD_MS, on compare la dernière position
-   connue de chaque ouvrier « présent » (déjà envoyée toutes les ~20s
+   connue de chaque ouvrier « présent » (déjà envoyée toutes les ~1 min
    pendant qu'il utilisait l'app) à maintenant. Si elle date de plus de
    DELAI_AUTO_DEPOINTAGE_MS et était hors zone, on régularise sa sortie
    à l'heure de cette dernière position — bien plus fiable qu'un seul
@@ -404,25 +421,35 @@ async function effectuerAutoDepointage() {
 const INTERVALLE_VERIFICATION_RETARD_MS = 5 * 60 * 1000;
 let minuteurVerificationRetard = null;
 
-function positionHorsZone(position) {
-  const resultat = GPS.zoneLaPlusProche(position.lat, position.lng);
-  return !resultat || !resultat.dansZone;
+// Marge de sécurité : une dernière position juste au bord du chantier
+// (parking, conteneur, dérive GPS de quelques dizaines de mètres) suivie
+// d'un téléphone mis en veille ne prouve pas un départ. On n'en conclut une
+// sortie que si cette position est loin de TOUTES les zones (au-delà de
+// FACTEUR_MARGE_AUTO_DEPOINTAGE fois leur rayon).
+const FACTEUR_MARGE_AUTO_DEPOINTAGE = 2;
+
+function positionNettementHorsZone(position) {
+  return !Stockage.donnees.zones.some(z =>
+    distanceGeo(position.lat, position.lng, z.lat, z.lng) <= z.rayon * FACTEUR_MARGE_AUTO_DEPOINTAGE);
 }
 
 async function verifierPointagesEnRetard() {
   if (!donneesEssentiellesChargees()) return;
   const maintenant = Date.now();
-  for (const o of Stockage.donnees.ouvriers) {
+  const presents = Stockage.donnees.ouvriers.filter(o => dernierPointageDuJour(o.id)?.type === 'entree');
+  if (!presents.length) return;
+  // Positions écoutées en direct par la session gestionnaire (seule à les lire)
+  const positions = Stockage.donnees.positions;
+  for (const o of presents) {
     const dernier = dernierPointageDuJour(o.id);
-    if (!dernier || dernier.type !== 'entree') continue; // pas présent, rien à vérifier
-    const position = Stockage.donnees.positions.find(p => p.id === o.id);
+    const position = positions.find(p => p.id === o.id);
     if (!position) continue; // jamais envoyé de position (ou supprimée à la déconnexion)
     // Position antérieure à l'entrée (ex. entrée saisie manuellement par le
     // gestionnaire, ouvrier sans GPS) : elle ne dit rien de la présence actuelle
     if (new Date(position.horodatage) <= new Date(dernier.horodatage)) continue;
     const age = maintenant - new Date(position.horodatage).getTime();
     if (age < DELAI_AUTO_DEPOINTAGE_MS) continue;
-    if (!positionHorsZone(position)) continue; // dernière position connue toujours dans la zone : on ne peut pas conclure
+    if (!positionNettementHorsZone(position)) continue; // dernière position connue dans la zone ou à son bord : on ne peut pas conclure
     try {
       await db.collection('pointages').doc(genererId()).set({
         idOuvrier: o.id,
@@ -788,7 +815,7 @@ function dernierPointageDuJour(idOuvrier) {
 }
 
 let dernierEnvoiPosition = 0;
-const INTERVALLE_ENVOI_POSITION_MS = 20000;
+const INTERVALLE_ENVOI_POSITION_MS = 60000; // 1 min : assez pour la carte et la surveillance, 3× moins d'écritures/lectures
 
 function envoyerPositionSiNecessaire(pos) {
   if (!utilisateurActuel || utilisateurActuel.role !== 'ouvrier') return;
@@ -1058,6 +1085,7 @@ function afficherVueGestionnaire() {
   $('role-utilisateur-en-tete').textContent = utilisateurActuel.admin ? 'Administrateur' : 'Accès gestionnaire';
   $('avatar-en-tete').textContent = initiales(utilisateurActuel.nom);
   $('bouton-onglet-comptes').style.display = utilisateurActuel.admin ? '' : 'none';
+  $('bouton-nettoyer-auto').style.display = utilisateurActuel.admin ? '' : 'none';
   actualiserGestionnaire();
   afficherOuvriersGestion();
   reinitialiserFormulaireZone();
@@ -1335,7 +1363,10 @@ async function enregistrerPointageManuel() {
 
   // Cohérence avec le pointage qui précède le même jour (deux entrées ou deux sorties d'affilée)
   const jour = jourLocalDe(horodatage);
-  const precedent = Stockage.donnees.pointages
+  let pointagesJour;
+  try { pointagesJour = await chargerPointagesPeriode(jour, jour); }
+  catch (e) { afficherNotification('Erreur : ' + e.message, 'erreur'); return; }
+  const precedent = pointagesJour
     .filter(p => p.idOuvrier === idOuvrier && jourLocalDe(p.horodatage) === jour && p.horodatage < horodatage)
     .sort((a,b) => new Date(a.horodatage) - new Date(b.horodatage))
     .pop();
@@ -1850,6 +1881,12 @@ function supprimerAbsence(id) {
 
 /* ─── RAPPORTS ─── */
 let donneesRapport = [];
+let pointagesRapport = []; // pointages de la période du dernier rapport (chargés à la demande)
+
+// Un pointage affiché dans un rapport peut être plus ancien que la fenêtre écoutée en direct
+function trouverPointage(id) {
+  return Stockage.donnees.pointages.find(x => x.id === id) || pointagesRapport.find(x => x.id === id);
+}
 let donneesTotauxZone = [];
 let donneesAbsencesRapport = [];
 
@@ -1870,12 +1907,18 @@ function remplirOuvriersRapport() {
   });
 }
 
-function genererRapport() {
+async function genererRapport() {
   const du = $('rapport-du').value;
   const au = $('rapport-au').value;
   const idOuvrier = $('rapport-ouvrier').value;
 
   if (!du||!au||du>au) { afficherNotification('Sélectionnez une période valide', 'erreur'); return; }
+  try {
+    pointagesRapport = await chargerPointagesPeriode(du, au);
+  } catch (e) {
+    afficherNotification('Chargement des pointages impossible : ' + e.message, 'erreur');
+    return;
+  }
 
   const ouvriers = idOuvrier ? Stockage.donnees.ouvriers.filter(o=>o.id===idOuvrier) : Stockage.donnees.ouvriers;
   donneesRapport = [];
@@ -1883,7 +1926,7 @@ function genererRapport() {
 
   // Un pointage = une ligne (pas un résumé par jour), pour ne pas masquer les allers-retours réels
   for (const o of ouvriers) {
-    const pointages = Stockage.donnees.pointages
+    const pointages = pointagesRapport
       .filter(p => p.idOuvrier===o.id && jourLocalDe(p.horodatage) >= du && jourLocalDe(p.horodatage) <= au)
       .sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
 
@@ -1998,7 +2041,7 @@ function versDatetimeLocal(iso) {
 let pointageEnEdition = null;
 
 function ouvrirModifPointage(id) {
-  const p = Stockage.donnees.pointages.find(x => x.id === id);
+  const p = trouverPointage(id);
   if (!p) return;
   const o = Stockage.donnees.ouvriers.find(x => x.id === p.idOuvrier);
   pointageEnEdition = id;
@@ -2027,8 +2070,70 @@ async function enregistrerModifPointage() {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   NETTOYAGE DES SORTIES AUTOMATIQUES ERRONÉES
+   Avant le correctif du 06/10, la surveillance passive pouvait dater une
+   sortie automatique de quelques secondes AVANT l'entrée du jour : l'entrée
+   restait alors le dernier pointage et chaque session ouverte réenregistrait
+   la même sortie toutes les 5 minutes (jusqu'à 100 copies). Est erronée toute
+   sortie automatique sans entrée plus tôt le même jour, ainsi que toute copie
+   d'une sortie automatique déjà comptée (même ouvrier, même horodatage).
+═══════════════════════════════════════════════════════════ */
+function sortiesAutomatiquesErronees(pointages) {
+  const tries = [...pointages].sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+  const premiereEntree = new Map(); // "idOuvrier|jour" -> horodatage de la première entrée
+  for (const p of tries) {
+    const cle = p.idOuvrier + '|' + jourLocalDe(p.horodatage);
+    if (p.type === 'entree' && !premiereEntree.has(cle)) premiereEntree.set(cle, new Date(p.horodatage));
+  }
+  const dejaComptees = new Set();
+  return tries.filter(p => {
+    if (!p.automatique || p.type !== 'sortie') return false;
+    const entree = premiereEntree.get(p.idOuvrier + '|' + jourLocalDe(p.horodatage));
+    if (!entree || entree >= new Date(p.horodatage)) return true;
+    const cle = p.idOuvrier + '|' + p.horodatage;
+    if (dejaComptees.has(cle)) return true;
+    dejaComptees.add(cle);
+    return false;
+  });
+}
+
+async function nettoyerSortiesAutomatiques() {
+  // Tout l'historique est nécessaire ici (lu une seule fois, à la demande)
+  let tous;
+  try { tous = (await db.collection('pointages').get()).docs.map(d => ({ id: d.id, ...d.data() })); }
+  catch (e) { afficherNotification('Chargement des pointages impossible : ' + e.message, 'erreur'); return; }
+  const erronees = sortiesAutomatiquesErronees(tous);
+  if (!erronees.length) { afficherNotification('Aucune sortie automatique erronée à nettoyer', 'succes'); return; }
+  const parOuvrierEtJour = new Map();
+  for (const p of erronees) {
+    const o = Stockage.donnees.ouvriers.find(x => x.id === p.idOuvrier);
+    const ligne = `${o ? o.nom : 'Ouvrier supprimé'} — ${formaterDateCourte(new Date(p.horodatage))}`;
+    parOuvrierEtJour.set(ligne, (parOuvrierEtJour.get(ligne) || 0) + 1);
+  }
+  const detail = [...parOuvrierEtJour].map(([ligne, n]) => `• ${ligne} : ${n}`).join('\n');
+  ouvrirDialogue(
+    'Nettoyer les sorties automatiques erronées',
+    `${erronees.length} sortie(s) automatique(s) erronée(s) seront supprimées définitivement :\n${detail}\n\nLes autres pointages ne sont pas touchés.`,
+    async () => {
+      try {
+        // Firestore limite un lot à 500 écritures
+        for (let i = 0; i < erronees.length; i += 400) {
+          const lot = db.batch();
+          erronees.slice(i, i + 400).forEach(p => lot.delete(db.collection('pointages').doc(p.id)));
+          await lot.commit();
+        }
+        afficherNotification(`${erronees.length} sortie(s) automatique(s) erronée(s) supprimée(s)`, 'succes');
+        genererRapport();
+      } catch (e) {
+        afficherNotification('Erreur : ' + e.message, 'erreur');
+      }
+    }
+  );
+}
+
 function supprimerPointage(id) {
-  const p = Stockage.donnees.pointages.find(x => x.id === id);
+  const p = trouverPointage(id);
   if (!p) return;
   const o = Stockage.donnees.ouvriers.find(x => x.id === p.idOuvrier);
   ouvrirDialogue(
