@@ -223,6 +223,16 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
   letter-spacing: .3em; color: var(--texte-2);
 }
 .icone-logo-connexion, .icone-logo-en-tete { flex-shrink: 0; }
+.logo-societe-connexion { flex-direction: column; gap: 14px; }
+.image-logo-connexion {
+  display: block; width: 100%; max-width: 340px; height: auto;
+  border-radius: var(--rayon-lg);
+}
+/* En sombre, le gris de « ASBESTOS » disparaît sur le fond : on pose le logo sur une plaque blanche. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .image-logo-connexion { background: #fff; padding: 12px 16px; }
+}
+[data-theme="dark"] .image-logo-connexion { background: #fff; padding: 12px 16px; }
 
 .carte-connexion {
   padding: 32px;
