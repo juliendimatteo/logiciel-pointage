@@ -57,12 +57,12 @@ function modeSombreActif() {
 // À remplir avec la configuration de l'application web du projet Firebase DMD
 // (console Firebase → Paramètres du projet → Vos applications → Config).
 const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyApNnOkszLEWk-RGzhOy0FzJlOmG0dXCmw",
+  authDomain: "pointage-pro-dmd.firebaseapp.com",
+  projectId: "pointage-pro-dmd",
+  storageBucket: "pointage-pro-dmd.firebasestorage.app",
+  messagingSenderId: "970219814166",
+  appId: "1:970219814166:web:709f69c958311ef70ae437"
 };
 if (!firebaseConfig.projectId) {
   document.body.innerHTML = '<p style="font-family:sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;line-height:1.5">'
