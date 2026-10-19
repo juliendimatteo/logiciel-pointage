@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 
@@ -505,6 +505,7 @@
         <button class="bouton bouton-primaire" onclick="genererRapport()">Générer</button>
         <button class="bouton bouton-fantome" onclick="ouvrirPointageManuel($('rapport-ouvrier').value)">✍️ Ajouter un pointage</button>
         <button class="bouton bouton-fantome" onclick="exporterExcel()" id="bouton-export" style="display:none;">⬇ Exporter Excel</button>
+        <button class="bouton bouton-fantome" onclick="nettoyerSortiesAutomatiques()" id="bouton-nettoyer-auto" style="display:none;" title="Supprimer les sorties automatiques en double ou sans entrée le même jour">🧹 Nettoyer les doublons</button>
       </div>
       <div class="entete-section" style="margin:24px 0 14px;">
         <div class="titre-section">Totaux par jour et par zone</div>
@@ -602,7 +603,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js').catch(() => {}));
