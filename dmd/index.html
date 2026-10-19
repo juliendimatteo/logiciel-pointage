@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PointagePro DMD</title>
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0F766E">
+<meta name="theme-color" content="#D7231E">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=dmd2">
+<link rel="stylesheet" href="style.css?v=dmd3">
 </head>
 <body>
 
@@ -115,7 +115,7 @@
         <div class="sous-titre-connexion">Sélectionnez votre rôle pour continuer</div>
         <div class="grille-roles">
           <div class="carte-role" id="role-gestionnaire" onclick="selectionnerRole('gestionnaire')">
-            <div class="icone-carte-role" style="background:#EFF6FF;">📊</div>
+            <div class="icone-carte-role" style="background:#FFF1F2;">📊</div>
             <div class="libelle-carte-role">Gestionnaire</div>
             <div class="description-carte-role">Tableau de bord &amp; rapports</div>
           </div>
@@ -606,7 +606,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-<script src="app.js?v=dmd2"></script>
+<script src="app.js?v=dmd3"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js').catch(() => {}));

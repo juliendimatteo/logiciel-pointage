@@ -7,10 +7,12 @@ a { color: inherit; text-decoration: none; }
 
 /* ─── VARIABLES DE STYLE ─── */
 :root {
-  --bleu:         #1D4ED8;
-  --bleu-fonce:   #1E40AF;
-  --bleu-clair:   #EFF6FF;
-  --bleu-anneau:  #BFDBFE;
+  --bleu:         #D7231E;
+  --bleu-fonce:   #A8170F;
+  --bleu-clair:   #FFF1F2;
+  --bleu-anneau:  #FECDD3;
+  --info:         #1D4ED8;
+  --info-clair:   #EFF6FF;
   --ambre:        #D97706;
   --ambre-clair:  #FFFBEB;
   --vert:         #15803D;
@@ -60,7 +62,8 @@ a { color: inherit; text-decoration: none; }
     --texte:        #E6EDF3;
     --texte-2:      #8B949E;
     --texte-3:      #484F58;
-    --bleu-clair:   #1D4ED820;
+    --bleu-clair:   #D7231E20;
+    --info-clair:   #1D4ED820;
     --vert-clair:   #15803D18;
     --rouge-clair:  #B91C1C18;
     --ambre-clair:  #D9770618;
@@ -79,7 +82,8 @@ a { color: inherit; text-decoration: none; }
   --texte:        #E6EDF3;
   --texte-2:      #8B949E;
   --texte-3:      #484F58;
-  --bleu-clair:   #1D4ED820;
+  --bleu-clair:   #D7231E20;
+  --info-clair:   #1D4ED820;
   --vert-clair:   #15803D18;
   --rouge-clair:  #B91C1C18;
   --ambre-clair:  #D9770618;
@@ -128,7 +132,7 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
 }
 .badge-vert  { background: var(--vert-clair);  color: var(--vert); }
 .badge-rouge { background: var(--rouge-clair); color: var(--rouge); }
-.badge-bleu  { background: var(--bleu-clair);  color: var(--bleu); }
+.badge-bleu  { background: var(--info-clair);  color: var(--info); }
 .badge-gris  { background: var(--fond-2);      color: var(--texte-2); }
 .badge-ambre { background: var(--ambre-clair); color: var(--ambre); }
 
@@ -155,9 +159,9 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
 }
 .bouton-primaire {
   background: var(--bleu); color: var(--texte-inv);
-  box-shadow: 0 1px 3px rgba(29,78,216,.3);
+  box-shadow: 0 1px 3px rgba(215,35,30,.3);
 }
-.bouton-primaire:hover { background: var(--bleu-fonce); box-shadow: 0 2px 8px rgba(29,78,216,.4); }
+.bouton-primaire:hover { background: var(--bleu-fonce); box-shadow: 0 2px 8px rgba(215,35,30,.4); }
 .bouton-fantome {
   background: var(--carte-2); color: var(--texte-2);
   border: 1px solid var(--bordure);
@@ -185,7 +189,7 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
   content: '';
   position: absolute; inset: 0;
   background:
-    radial-gradient(ellipse 60% 40% at 20% 10%, rgba(29,78,216,.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 20% 10%, rgba(215,35,30,.08) 0%, transparent 60%),
     radial-gradient(ellipse 50% 60% at 80% 90%, rgba(217,119,6,.06) 0%, transparent 60%);
   pointer-events: none;
 }
@@ -203,7 +207,7 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
   width: 48px; height: 48px; border-radius: 14px;
   background: var(--bleu);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(29,78,216,.35);
+  box-shadow: 0 4px 12px rgba(215,35,30,.35);
 }
 .icone-logo-connexion svg { color: #fff; }
 .nom-logo-connexion {
@@ -269,10 +273,10 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
   background: var(--bleu); color: #fff;
   border-radius: var(--rayon);
   font-size: 15px; font-weight: 600; font-family: var(--police-texte);
-  box-shadow: 0 2px 8px rgba(29,78,216,.3);
+  box-shadow: 0 2px 8px rgba(215,35,30,.3);
   transition: all var(--transition);
 }
-.bouton-connexion:hover { background: var(--bleu-fonce); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(29,78,216,.4); }
+.bouton-connexion:hover { background: var(--bleu-fonce); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(215,35,30,.4); }
 .bouton-connexion:disabled { opacity: .5; cursor: not-allowed; transform: none; }
 
 /* ═══════════════════════════════════════════

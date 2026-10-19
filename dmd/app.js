@@ -918,9 +918,9 @@ function dessinerRadar(positionOuvrier, resultatZone) {
   // Cercle de la zone
   const rayonAffiche = zone.rayon * echelle;
   ctx.beginPath(); ctx.arc(cx,cy,rayonAffiche,0,Math.PI*2);
-  ctx.fillStyle = dansZone ? 'rgba(21,128,61,.12)' : 'rgba(29,78,216,.08)';
+  ctx.fillStyle = dansZone ? 'rgba(21,128,61,.12)' : 'rgba(215,35,30,.08)';
   ctx.fill();
-  ctx.strokeStyle = dansZone ? '#15803D' : '#1D4ED8';
+  ctx.strokeStyle = dansZone ? '#15803D' : '#D7231E';
   ctx.lineWidth = 2; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
 
   // Position de l'ouvrier
@@ -936,7 +936,7 @@ function dessinerRadar(positionOuvrier, resultatZone) {
 
   // Point central de la zone
   ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2);
-  ctx.fillStyle = '#1D4ED8'; ctx.fill();
+  ctx.fillStyle = '#D7231E'; ctx.fill();
 
   // Point de l'ouvrier
   ctx.beginPath(); ctx.arc(ox,oy,9,0,Math.PI*2);
@@ -1064,7 +1064,7 @@ function mettreAJourCarte() {
   cerclesZonesCarte = {};
   Stockage.donnees.zones.forEach(z => {
     const cercle = L.circle([z.lat, z.lng], {
-      radius: z.rayon, color: '#1D4ED8', weight: 2, fillColor: '#1D4ED8', fillOpacity: 0.08
+      radius: z.rayon, color: '#D7231E', weight: 2, fillColor: '#D7231E', fillOpacity: 0.08
     }).addTo(carteLeaflet).bindTooltip(z.nom, { permanent: true, direction: 'top', className: 'etiquette-zone-carte' });
     cerclesZonesCarte[z.id] = cercle;
   });
@@ -1962,9 +1962,9 @@ function preparerFeuilleRapport(classeur, nom, titreTexte, colonnes, derniereCol
   feuille.columns.forEach((col, i) => { ligneEntetes.getCell(i+1).value = col.header; });
   ligneEntetes.eachCell(cellule => {
     cellule.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    cellule.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } };
+    cellule.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD7231E' } };
     cellule.alignment = { vertical: 'middle', horizontal: 'left' };
-    cellule.border = { bottom: { style: 'thin', color: { argb: 'FF1E40AF' } } };
+    cellule.border = { bottom: { style: 'thin', color: { argb: 'FFA8170F' } } };
   });
   ligneEntetes.height = 20;
   return feuille;
@@ -2047,8 +2047,8 @@ async function exporterExcel() {
       celluleStatut.font = { color: { argb: 'FFD97706' }, bold: true };
       celluleStatut.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } };
     } else {
-      celluleStatut.font = { color: { argb: 'FF1D4ED8' }, bold: true };
-      celluleStatut.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+      celluleStatut.font = { color: { argb: 'FFD7231E' }, bold: true };
+      celluleStatut.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF1F2' } };
     }
   });
 
