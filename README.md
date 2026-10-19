@@ -69,35 +69,39 @@ l'administrateur prend effet pour tout le monde. Seule la session de
 connexion (qui est actuellement connecté sur cet appareil) reste en local
 (`localStorage`).
 
-**Limite assumée** : comme pour le reste de l'application (site 100%
-statique, sans serveur), les règles Firestore ci-dessous autorisent tout
-client authentifié anonymement à lire/écrire la collection `comptes`. La
-distinction administrateur/accès simple n'est donc appliquée que côté
-interface, pas au niveau des données : elle empêche un usage normal
-inapproprié, mais pas un utilisateur déterminé à inspecter le code ou la
-base Firestore directement.
+**Limite assumée** : l'application se connecte à Firebase en anonyme
+(site 100% statique, sans serveur), Firestore ne sait donc pas qui est
+gestionnaire, administrateur ou ouvrier. Les règles de `firestore.rules`
+n'acceptent que des documents ayant exactement la forme écrite par l'app et
+que les modifications qu'elle effectue réellement (un compte ne peut jamais
+devenir administrateur, un mot de passe déjà défini ne peut pas être
+remplacé, le compte administrateur ne peut être ni désactivé ni supprimé,
+un pointage existant ne peut changer que d'heure…). Elles ne distinguent
+pas en revanche les rôles : la collection `comptes` (empreintes comprises)
+reste lisible, et la distinction administrateur/accès simple n'est
+appliquée que côté interface. Cela empêche un usage normal inapproprié et
+les écritures incohérentes, mais pas un utilisateur déterminé à inspecter
+le code ou la base Firestore directement.
 
 ### Configuration Firebase requise
 
 Dans la console Firebase du projet :
 1. **Firestore Database** activée
 2. **Authentication → Sign-in method → Anonymous** activé (l'app se connecte
-   anonymement pour respecter les règles de sécurité ci-dessous)
-3. **Règles Firestore** (onglet Rules) :
-   ```
-   rules_version = '2';
-   service cloud.firestore {
-     match /databases/{database}/documents {
-       match /{document=**} {
-         allow read, write: if request.auth != null;
-       }
-     }
-   }
-   ```
+   anonymement pour respecter les règles de sécurité Firestore)
+3. **Règles Firestore** (onglet Rules) : copier le contenu du fichier
+   [`firestore.rules`](firestore.rules) puis **Publier**. À republier à
+   chaque modification de ce fichier (nouveau champ, nouveau type
+   d'absence…), sinon les écritures correspondantes seront refusées.
+4. **Premier compte administrateur** : les règles interdisent de créer un
+   compte administrateur depuis l'app. Sur une base neuve, créer dans la
+   collection `comptes` un document avec `nom` = `"Administrateur"`,
+   `empreinte` = `null`, `admin` = `true`, `actif` = `true` ; le mot de
+   passe sera défini à la première connexion.
 
 La configuration du projet (`firebaseConfig`) est en clair dans `app.js` —
 c'est normal pour une app web Firebase, la clé n'est pas un secret : la
-protection se fait via les règles ci-dessus, pas via sa confidentialité.
+protection se fait via les règles Firestore, pas via sa confidentialité.
 
 ## Utilisation
 
@@ -117,6 +121,7 @@ nécessaire (accès à Firestore).
 - `style.css` — thème visuel (clair/sombre automatique)
 - `app.js` — logique applicative, synchronisation Firestore, géolocalisation
 - `manifest.json`, `service-worker.js`, `icons/` — installation en PWA
+- `firestore.rules` — règles de sécurité Firestore (à publier dans la console Firebase)
 - `.github/workflows/pages.yml` — déploiement automatique sur GitHub Pages
 
 ## Notes
