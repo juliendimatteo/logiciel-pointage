@@ -985,6 +985,7 @@ function afficherVueGestionnaire() {
   $('role-utilisateur-en-tete').textContent = utilisateurActuel.admin ? 'Administrateur' : 'Accès gestionnaire';
   $('avatar-en-tete').textContent = initiales(utilisateurActuel.nom);
   $('bouton-onglet-comptes').style.display = utilisateurActuel.admin ? '' : 'none';
+  $('bouton-nettoyer-auto').style.display = utilisateurActuel.admin ? '' : 'none';
   actualiserGestionnaire();
   afficherOuvriersGestion();
   reinitialiserFormulaireZone();
@@ -1922,6 +1923,64 @@ async function enregistrerModifPointage() {
   } catch (e) {
     afficherNotification('Erreur : ' + e.message, 'erreur');
   }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NETTOYAGE DES SORTIES AUTOMATIQUES ERRONÉES
+   Avant le correctif du 06/10, la surveillance passive pouvait dater une
+   sortie automatique de quelques secondes AVANT l'entrée du jour : l'entrée
+   restait alors le dernier pointage et chaque session ouverte réenregistrait
+   la même sortie toutes les 5 minutes (jusqu'à 100 copies). Est erronée toute
+   sortie automatique sans entrée plus tôt le même jour, ainsi que toute copie
+   d'une sortie automatique déjà comptée (même ouvrier, même horodatage).
+═══════════════════════════════════════════════════════════ */
+function sortiesAutomatiquesErronees() {
+  const tries = [...Stockage.donnees.pointages].sort((a,b)=>new Date(a.horodatage)-new Date(b.horodatage));
+  const premiereEntree = new Map(); // "idOuvrier|jour" -> horodatage de la première entrée
+  for (const p of tries) {
+    const cle = p.idOuvrier + '|' + jourLocalDe(p.horodatage);
+    if (p.type === 'entree' && !premiereEntree.has(cle)) premiereEntree.set(cle, new Date(p.horodatage));
+  }
+  const dejaComptees = new Set();
+  return tries.filter(p => {
+    if (!p.automatique || p.type !== 'sortie') return false;
+    const entree = premiereEntree.get(p.idOuvrier + '|' + jourLocalDe(p.horodatage));
+    if (!entree || entree >= new Date(p.horodatage)) return true;
+    const cle = p.idOuvrier + '|' + p.horodatage;
+    if (dejaComptees.has(cle)) return true;
+    dejaComptees.add(cle);
+    return false;
+  });
+}
+
+function nettoyerSortiesAutomatiques() {
+  const erronees = sortiesAutomatiquesErronees();
+  if (!erronees.length) { afficherNotification('Aucune sortie automatique erronée à nettoyer', 'succes'); return; }
+  const parOuvrierEtJour = new Map();
+  for (const p of erronees) {
+    const o = Stockage.donnees.ouvriers.find(x => x.id === p.idOuvrier);
+    const ligne = `${o ? o.nom : 'Ouvrier supprimé'} — ${formaterDateCourte(new Date(p.horodatage))}`;
+    parOuvrierEtJour.set(ligne, (parOuvrierEtJour.get(ligne) || 0) + 1);
+  }
+  const detail = [...parOuvrierEtJour].map(([ligne, n]) => `• ${ligne} : ${n}`).join('\n');
+  ouvrirDialogue(
+    'Nettoyer les sorties automatiques erronées',
+    `${erronees.length} sortie(s) automatique(s) erronée(s) seront supprimées définitivement :\n${detail}\n\nLes autres pointages ne sont pas touchés.`,
+    async () => {
+      try {
+        // Firestore limite un lot à 500 écritures
+        for (let i = 0; i < erronees.length; i += 400) {
+          const lot = db.batch();
+          erronees.slice(i, i + 400).forEach(p => lot.delete(db.collection('pointages').doc(p.id)));
+          await lot.commit();
+        }
+        afficherNotification(`${erronees.length} sortie(s) automatique(s) erronée(s) supprimée(s)`, 'succes');
+        genererRapport();
+      } catch (e) {
+        afficherNotification('Erreur : ' + e.message, 'erreur');
+      }
+    }
+  );
 }
 
 function supprimerPointage(id) {
