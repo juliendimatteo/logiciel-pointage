@@ -259,6 +259,8 @@ h1, h2, h3 { font-family: var(--police-titre); text-wrap: balance; }
 .description-carte-role { font-size: 11px; color: var(--texte-2); }
 
 .conteneur-selection-ouvrier { margin-bottom: 24px; }
+.carte-connexion .champ { margin-bottom: 16px; }
+.carte-connexion .champ input { width: 100%; padding: 10px 14px; }
 .libelle-champ { font-size: 12px; font-weight: 600; color: var(--texte-2); letter-spacing: .5px; text-transform: uppercase; margin-bottom: 6px; display: block; }
 .champ-liste {
   width: 100%; padding: 10px 14px;

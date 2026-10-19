@@ -115,25 +115,51 @@ async function verifierEtInitialiserDonnees() {
 
 let syncOuvriersPrete = false;
 let syncZonesPrete = false;
-let syncComptesPrete = false;
+let premierAdminExiste = null; // null = pas encore connu (lu dans meta/administration)
+let desabonnementsSync = [];
 
 function donneesEssentiellesChargees() {
   return syncOuvriersPrete && syncZonesPrete;
 }
 
+// Les droits Firestore dépendent de l'utilisateur Firebase (anonyme pour les
+// ouvriers, compte e-mail pour les gestionnaires) : à chaque changement, on
+// coupe tous les abonnements et on ne rouvre que ceux autorisés.
+function arreterSynchronisation() {
+  desabonnementsSync.forEach(desabonner => desabonner());
+  desabonnementsSync = [];
+  syncOuvriersPrete = false;
+  syncZonesPrete = false;
+  Stockage.donnees.positions = [];
+  Stockage.donnees.absences = [];
+  Stockage.donnees.comptes = [];
+  clearInterval(minuteurVerificationRetard);
+  minuteurVerificationRetard = null;
+}
+
+function ecouter(ref, surDonnees, libelle, notifierErreur = true) {
+  desabonnementsSync.push(ref.onSnapshot(surDonnees, err => {
+    console.error(`Erreur de synchronisation (${libelle}) :`, err);
+    if (notifierErreur) afficherNotification(`Synchronisation impossible (${libelle})`, 'erreur');
+  }));
+}
+
 function demarrerSynchronisation() {
-  db.collection('ouvriers').onSnapshot(snap => {
+  const gestionnaire = utilisateurActuel?.role === 'gestionnaire';
+
+  ecouter(db.collection('ouvriers'), snap => {
     Stockage.donnees.ouvriers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     syncOuvriersPrete = true;
-    if (!verificationInitialisationFaite) { verificationInitialisationFaite = true; verifierEtInitialiserDonnees(); }
+    // Seul un gestionnaire peut créer les données de démonstration
+    if (gestionnaire && !verificationInitialisationFaite) { verificationInitialisationFaite = true; verifierEtInitialiserDonnees(); }
     rafraichirSelonContexte();
-  }, err => { console.error('Erreur de synchronisation (ouvriers) :', err); afficherNotification('Synchronisation impossible (ouvriers)', 'erreur'); });
+  }, 'ouvriers');
 
-  db.collection('zones').onSnapshot(snap => {
+  ecouter(db.collection('zones'), snap => {
     Stockage.donnees.zones = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     syncZonesPrete = true;
     rafraichirSelonContexte();
-  }, err => { console.error('Erreur de synchronisation (zones) :', err); afficherNotification('Synchronisation impossible (zones)', 'erreur'); });
+  }, 'zones');
 
   // Quota Firestore : chaque document reçu compte comme une lecture. On
   // n'écoute en direct que les pointages récents (depuis hier 00:00), qui
@@ -141,36 +167,45 @@ function demarrerSynchronisation() {
   // demande (chargerPointagesPeriode). Écouter tout l'historique faisait
   // relire des milliers de pointages à chaque ouverture de l'app.
   const debutFenetre = new Date(); debutFenetre.setHours(0,0,0,0); debutFenetre.setDate(debutFenetre.getDate()-1);
-  db.collection('pointages').where('horodatage', '>=', debutFenetre.toISOString()).onSnapshot(snap => {
+  ecouter(db.collection('pointages').where('horodatage', '>=', debutFenetre.toISOString()), snap => {
     Stockage.donnees.pointages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     rafraichirSelonContexte();
-  }, err => { console.error('Erreur de synchronisation (pointages) :', err); afficherNotification('Synchronisation impossible (pointages)', 'erreur'); });
+  }, 'pointages');
 
-  db.collection('absences').onSnapshot(snap => {
-    Stockage.donnees.absences = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    rafraichirSelonContexte();
-  }, err => { console.error('Erreur de synchronisation (absences) :', err); afficherNotification('Synchronisation impossible (absences)', 'erreur'); });
+  if (!gestionnaire) {
+    ecouter(db.collection('meta').doc('administration'), doc => {
+      premierAdminExiste = doc.exists;
+      rafraichirSelonContexte();
+    }, 'administration', false);
+    return;
+  }
 
-  db.collection('comptes').onSnapshot(snap => {
-    Stockage.donnees.comptes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    syncComptesPrete = true;
-    rafraichirSelonContexte();
-  }, err => { console.error('Erreur de synchronisation (comptes) :', err); });
+  // Son propre compte : détecte une désactivation ou suppression en direct
+  ecouter(db.collection('comptes').doc(utilisateurActuel.id), doc => {
+    if (!doc.exists || !doc.data().actif) {
+      afficherNotification('Votre accès a été désactivé', 'erreur');
+      seDeconnecter();
+    }
+  }, 'compte', false);
 
-  demarrerSurveillancePassive();
-}
-
-// Les positions changent toutes les minutes pour chaque ouvrier présent :
-// seule la session gestionnaire (carte en direct) les écoute en continu.
-// Ailleurs, la surveillance passive les relit ponctuellement si besoin.
-let ecoutePositionsActive = false;
-function ecouterPositions() {
-  if (ecoutePositionsActive) return;
-  ecoutePositionsActive = true;
-  db.collection('positions').onSnapshot(snap => {
+  ecouter(db.collection('positions'), snap => {
     Stockage.donnees.positions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     if (carteLeaflet) mettreAJourCarte();
-  }, err => { console.error('Erreur de synchronisation (positions) :', err); });
+  }, 'positions', false);
+
+  ecouter(db.collection('absences'), snap => {
+    Stockage.donnees.absences = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    rafraichirSelonContexte();
+  }, 'absences');
+
+  if (utilisateurActuel.admin) {
+    ecouter(db.collection('comptes'), snap => {
+      Stockage.donnees.comptes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      rafraichirSelonContexte();
+    }, 'comptes', false);
+  }
+
+  demarrerSurveillancePassive();
 }
 
 // Pointages des jours du..au (AAAA-MM-JJ, bornes incluses, heure locale),
@@ -373,16 +408,15 @@ async function effectuerAutoDepointage() {
    concerné reste actif en continu pendant 1h — or un téléphone mis en
    veille ou dont l'app passe en arrière-plan voit ses minuteurs
    suspendus par l'OS, donc ce cas très courant ne se déclenche jamais.
-   Ce filet de secours tourne dans N'IMPORTE QUELLE session ouverte
-   (ouvrier ou gestionnaire, y compris avant connexion) : toutes les
+   Ce filet de secours tourne dans les sessions GESTIONNAIRE (seules
+   autorisées à lire les positions des ouvriers) : toutes les
    INTERVALLE_VERIFICATION_RETARD_MS, on compare la dernière position
-   connue de chaque ouvrier « présent » (déjà envoyée toutes les ~20s
+   connue de chaque ouvrier « présent » (déjà envoyée toutes les ~1 min
    pendant qu'il utilisait l'app) à maintenant. Si elle date de plus de
    DELAI_AUTO_DEPOINTAGE_MS et était hors zone, on régularise sa sortie
    à l'heure de cette dernière position — bien plus fiable qu'un seul
    téléphone resté éveillé, même si ça reste best-effort (nécessite
-   qu'au moins une session, n'importe laquelle, soit ouverte de temps
-   à autre).
+   qu'au moins une session gestionnaire soit ouverte de temps à autre).
 ═══════════════════════════════════════════════════════════ */
 const INTERVALLE_VERIFICATION_RETARD_MS = 5 * 60 * 1000;
 let minuteurVerificationRetard = null;
@@ -404,11 +438,8 @@ async function verifierPointagesEnRetard() {
   const maintenant = Date.now();
   const presents = Stockage.donnees.ouvriers.filter(o => dernierPointageDuJour(o.id)?.type === 'entree');
   if (!presents.length) return;
-  let positions = Stockage.donnees.positions;
-  if (!ecoutePositionsActive) {
-    try { positions = (await db.collection('positions').get()).docs.map(d => ({ id: d.id, ...d.data() })); }
-    catch (e) { console.error('Lecture des positions impossible :', e); return; }
-  }
+  // Positions écoutées en direct par la session gestionnaire (seule à les lire)
+  const positions = Stockage.donnees.positions;
   for (const o of presents) {
     const dernier = dernierPointageDuJour(o.id);
     const position = positions.find(p => p.id === o.id);
@@ -460,12 +491,7 @@ $('dialogue').addEventListener('click', e => { if (e.target === $('dialogue')) f
    CONNEXION
 ═══════════════════════════════════════════════════════════ */
 let roleSelectionne = null;
-
-async function hacherTexte(texte) {
-  const donnees = new TextEncoder().encode(texte);
-  const empreinte = await crypto.subtle.digest('SHA-256', donnees);
-  return Array.from(new Uint8Array(empreinte)).map(o => o.toString(16).padStart(2, '0')).join('');
-}
+let connexionEnCours = false;
 
 function selectionnerRole(role) {
   roleSelectionne = role;
@@ -481,8 +507,8 @@ function selectionnerRole(role) {
     peuplerListeOuvriersConnexion();
     $('selection-ouvrier').onchange = () => mettreAJourBoutonConnexion();
   } else if (role === 'gestionnaire') {
+    $('section-compte-gestionnaire').style.display = 'block';
     $('section-mdp-gestionnaire').style.display = 'block';
-    $('selection-compte-gestionnaire').onchange = () => { mettreAJourLibelleMdpGestionnaire(); mettreAJourBoutonConnexion(); };
     peuplerConnexionGestionnaire();
   }
   mettreAJourBoutonConnexion();
@@ -501,98 +527,102 @@ function peuplerListeOuvriersConnexion() {
   mettreAJourBoutonConnexion();
 }
 
-function comptesActifsConnexion() {
-  return Stockage.donnees.comptes.filter(c => c.actif);
+// Tant qu'aucun administrateur n'existe (base neuve), l'écran gestionnaire
+// crée le compte administrateur au lieu de se connecter.
+function creationPremierAdmin() {
+  return premierAdminExiste === false;
 }
 
 function peuplerConnexionGestionnaire() {
   if (roleSelectionne !== 'gestionnaire') return;
-  if (!syncComptesPrete) {
-    $('section-compte-gestionnaire').style.display = 'none';
-    $('indice-compte-oublie').style.display = 'none';
-    $('mdp-gestionnaire').disabled = true;
-    $('libelle-mdp-gestionnaire').textContent = 'Chargement…';
-    mettreAJourBoutonConnexion();
-    return;
-  }
-  $('mdp-gestionnaire').disabled = false;
-  const comptes = comptesActifsConnexion();
-  if (!comptes.length) {
-    $('section-compte-gestionnaire').style.display = 'none';
-    $('indice-compte-oublie').style.display = 'none';
-    $('libelle-mdp-gestionnaire').textContent = 'Créer le mot de passe administrateur';
-  } else {
-    $('section-compte-gestionnaire').style.display = 'block';
-    $('indice-compte-oublie').style.display = 'block';
-    const sel = $('selection-compte-gestionnaire');
-    const valeurActuelle = sel.value;
-    sel.innerHTML = '<option value="">-- Choisir un compte --</option>';
-    comptes.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.id; opt.textContent = c.nom + (c.admin ? ' (Administrateur)' : '');
-      sel.appendChild(opt);
-    });
-    if ([...sel.options].some(o => o.value === valeurActuelle)) sel.value = valeurActuelle;
-    mettreAJourLibelleMdpGestionnaire();
-  }
+  const creation = creationPremierAdmin();
+  $('libelle-mdp-gestionnaire').textContent = creation ? 'Choisir le mot de passe administrateur' : 'Mot de passe';
+  $('mdp-gestionnaire').autocomplete = creation ? 'new-password' : 'current-password';
+  $('indice-compte-oublie').style.display = creation ? 'none' : 'block';
+  $('indice-premier-admin').style.display = creation ? 'block' : 'none';
   mettreAJourBoutonConnexion();
-}
-
-function mettreAJourLibelleMdpGestionnaire() {
-  const comptes = comptesActifsConnexion();
-  if (!comptes.length) return;
-  const compte = comptes.find(c => c.id === $('selection-compte-gestionnaire').value);
-  $('libelle-mdp-gestionnaire').textContent = (compte && !compte.empreinte) ? 'Créer le mot de passe' : 'Mot de passe';
 }
 
 function mettreAJourBoutonConnexion() {
   const btn = $('bouton-connexion');
-  if (!roleSelectionne) { btn.disabled = true; return; }
+  if (!roleSelectionne || connexionEnCours) { btn.disabled = true; return; }
   if (roleSelectionne === 'ouvrier' && !$('selection-ouvrier').value) { btn.disabled = true; return; }
   if (roleSelectionne === 'gestionnaire') {
-    if (!syncComptesPrete) { btn.disabled = true; return; }
-    if (comptesActifsConnexion().length && !$('selection-compte-gestionnaire').value) { btn.disabled = true; return; }
-    if (!$('mdp-gestionnaire').value) { btn.disabled = true; return; }
+    if (premierAdminExiste === null) { btn.disabled = true; return; }
+    if (!$('email-gestionnaire').value.trim() || !$('mdp-gestionnaire').value) { btn.disabled = true; return; }
   }
   btn.disabled = false;
 }
 
+function messageErreurAuth(e) {
+  const messages = {
+    'auth/invalid-credential': 'Adresse e-mail ou mot de passe incorrect',
+    'auth/invalid-login-credentials': 'Adresse e-mail ou mot de passe incorrect',
+    'auth/wrong-password': 'Adresse e-mail ou mot de passe incorrect',
+    'auth/user-not-found': 'Adresse e-mail ou mot de passe incorrect',
+    'auth/invalid-email': 'Adresse e-mail invalide',
+    'auth/email-already-in-use': 'Un compte existe déjà pour cette adresse e-mail',
+    'auth/weak-password': 'Mot de passe trop faible (6 caractères minimum)',
+    'auth/user-disabled': 'Ce compte a été désactivé',
+    'auth/too-many-requests': 'Trop de tentatives — réessayez dans quelques minutes',
+    'auth/network-request-failed': 'Pas de connexion internet',
+    'auth/operation-not-allowed': "La connexion par e-mail n'est pas activée dans Firebase",
+  };
+  return messages[e.code] || ('Erreur : ' + e.message);
+}
+
+// Application Firebase secondaire : permet de créer un utilisateur Firebase
+// Auth sans remplacer la session de l'utilisateur actuellement connecté.
+function authSecondaire() {
+  const app = firebase.apps.find(a => a.name === 'creation-comptes') || firebase.initializeApp(firebaseConfig, 'creation-comptes');
+  return app;
+}
+
+async function creerPremierAdministrateur(email, mdp) {
+  const app = authSecondaire();
+  await app.auth().setPersistence(firebase.auth.Auth.Persistence.NONE);
+  let cred;
+  try {
+    cred = await app.auth().createUserWithEmailAndPassword(email, mdp);
+  } catch (e) {
+    // Tentative précédente interrompue après la création de l'utilisateur
+    if (e.code !== 'auth/email-already-in-use') throw e;
+    cred = await app.auth().signInWithEmailAndPassword(email, mdp);
+  }
+  const uid = cred.user.uid;
+  const dbSecondaire = app.firestore();
+  const lot = dbSecondaire.batch();
+  lot.set(dbSecondaire.collection('comptes').doc(uid), { nom: 'Administrateur', email: cred.user.email, admin: true, actif: true });
+  lot.set(dbSecondaire.collection('meta').doc('administration'), { premierAdministrateur: uid });
+  try {
+    await lot.commit();
+  } finally {
+    await app.auth().signOut();
+  }
+}
+
 async function seConnecter() {
-  if (!roleSelectionne) return;
+  if (!roleSelectionne || connexionEnCours) return;
   if (roleSelectionne === 'gestionnaire') {
-    if (!syncComptesPrete) return;
+    const email = $('email-gestionnaire').value.trim();
     const mdp = $('mdp-gestionnaire').value;
-    if (!mdp) return;
-    const empreinte = await hacherTexte(mdp);
-    const comptes = comptesActifsConnexion();
-
-    if (!comptes.length) {
-      const id = genererId();
-      try {
-        await db.collection('comptes').doc(id).set({ nom: 'Administrateur', empreinte, admin: true, actif: true });
-      } catch (e) { afficherNotification('Erreur : ' + e.message, 'erreur'); return; }
-      afficherNotification('Compte administrateur créé', 'succes');
-      utilisateurActuel = { role: 'gestionnaire', id, nom: 'Administrateur', admin: true };
-      enregistrerSession(utilisateurActuel);
-      afficherVueGestionnaire();
-      return;
+    if (!email || !mdp || premierAdminExiste === null) return;
+    connexionEnCours = true;
+    mettreAJourBoutonConnexion();
+    try {
+      if (creationPremierAdmin()) {
+        await creerPremierAdministrateur(email, mdp);
+        afficherNotification('Compte administrateur créé', 'succes');
+      }
+      // La suite (vérification du compte, affichage du tableau de bord) est
+      // gérée par onAuthStateChanged
+      await firebase.auth().signInWithEmailAndPassword(email, mdp);
+    } catch (e) {
+      afficherNotification(messageErreurAuth(e), 'erreur');
+    } finally {
+      connexionEnCours = false;
+      mettreAJourBoutonConnexion();
     }
-
-    const compte = comptes.find(c => c.id === $('selection-compte-gestionnaire').value);
-    if (!compte) { afficherNotification('Sélectionnez votre compte', 'erreur'); return; }
-
-    if (!compte.empreinte) {
-      try {
-        await db.collection('comptes').doc(compte.id).update({ empreinte });
-      } catch (e) { afficherNotification('Erreur : ' + e.message, 'erreur'); return; }
-      afficherNotification('Mot de passe défini', 'succes');
-    } else if (empreinte !== compte.empreinte) {
-      afficherNotification('Mot de passe incorrect', 'erreur');
-      return;
-    }
-    utilisateurActuel = { role: 'gestionnaire', id: compte.id, nom: compte.nom, admin: !!compte.admin };
-    enregistrerSession(utilisateurActuel);
-    afficherVueGestionnaire();
   } else {
     const idOuvrier = $('selection-ouvrier').value;
     if (!idOuvrier) return;
@@ -603,7 +633,42 @@ async function seConnecter() {
   }
 }
 
+async function envoyerReinitialisationMdp() {
+  const email = $('email-gestionnaire').value.trim();
+  if (!email) { afficherNotification('Indiquez votre adresse e-mail', 'erreur'); $('email-gestionnaire').focus(); return; }
+  try {
+    await firebase.auth().sendPasswordResetEmail(email);
+    afficherNotification(`Si un compte existe pour ${email}, un e-mail de réinitialisation a été envoyé`, 'succes');
+  } catch (e) {
+    afficherNotification(messageErreurAuth(e), 'erreur');
+  }
+}
+
+// Vérifie qu'un utilisateur Firebase connecté par e-mail correspond à un
+// compte gestionnaire actif, puis ouvre le tableau de bord.
+async function ouvrirSessionGestionnaire(u) {
+  let compte = null;
+  try {
+    const doc = await db.collection('comptes').doc(u.uid).get();
+    if (doc.exists) compte = doc.data();
+  } catch (e) {
+    console.error('Lecture du compte gestionnaire impossible :', e);
+  }
+  if (firebase.auth().currentUser !== u) return; // déconnecté entre-temps
+  if (!compte || !compte.actif) {
+    afficherNotification(compte ? 'Votre accès a été désactivé' : "Cette adresse n'a pas d'accès gestionnaire", 'erreur');
+    firebase.auth().signOut();
+    return;
+  }
+  effacerSession();
+  utilisateurActuel = { role: 'gestionnaire', id: u.uid, nom: compte.nom, admin: !!compte.admin };
+  $('mdp-gestionnaire').value = '';
+  afficherVueGestionnaire();
+  demarrerSynchronisation();
+}
+
 function seDeconnecter() {
+  const etaitGestionnaire = utilisateurActuel?.role === 'gestionnaire';
   if (utilisateurActuel?.role === 'ouvrier') {
     db.collection('positions').doc(utilisateurActuel.id).delete().catch(()=>{});
   }
@@ -617,9 +682,13 @@ function seDeconnecter() {
   $('role-gestionnaire').classList.remove('selectionne');
   $('role-ouvrier').classList.remove('selectionne');
   $('section-selection-ouvrier').style.display = 'none';
+  $('section-compte-gestionnaire').style.display = 'none';
   $('section-mdp-gestionnaire').style.display = 'none';
   $('mdp-gestionnaire').value = '';
   $('bouton-connexion').disabled = true;
+  // Retour en session anonyme (gérée par onAuthStateChanged)
+  const u = firebase.auth().currentUser;
+  if (etaitGestionnaire && u && !u.isAnonymous) firebase.auth().signOut();
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1012,7 +1081,6 @@ function dessinerRadarSansGPS() {
 ═══════════════════════════════════════════════════════════ */
 function afficherVueGestionnaire() {
   afficherVue('gestionnaire');
-  ecouterPositions();
   $('nom-utilisateur-en-tete').textContent = utilisateurActuel.nom;
   $('role-utilisateur-en-tete').textContent = utilisateurActuel.admin ? 'Administrateur' : 'Accès gestionnaire';
   $('avatar-en-tete').textContent = initiales(utilisateurActuel.nom);
@@ -1327,8 +1395,12 @@ async function enregistrerPointageManuel() {
 
 /* ─── COMPTES GESTIONNAIRE (accès administrateur / tiers) ─── */
 function nbAdminsActifs() {
-  return Stockage.donnees.comptes.filter(c => c.admin && c.actif).length;
+  return Stockage.donnees.comptes.filter(c => c.admin && c.actif && !estAncienCompte(c)).length;
 }
+
+// Accès créés avant le passage à Firebase Auth (sans adresse e-mail) : ils ne
+// permettent plus de se connecter et sont à supprimer.
+const estAncienCompte = c => !c.email;
 
 function afficherComptes() {
   const el = $('liste-comptes');
@@ -1338,20 +1410,21 @@ function afficherComptes() {
   }
   el.innerHTML = Stockage.donnees.comptes.map(c => {
     const estSoiMeme = c.id === utilisateurActuel?.id;
-    const peutSupprimer = !estSoiMeme && (!c.admin || nbAdminsActifs() > 1);
+    const ancien = estAncienCompte(c);
+    const peutSupprimer = !estSoiMeme && (ancien || !c.admin || nbAdminsActifs() > 1);
     return `<div class="carte carte-zone">
       <div class="haut-carte-zone">
         <div>
-          <div class="nom-zone">${c.admin ? '👑' : '🔑'} ${c.nom}${estSoiMeme ? ' (vous)' : ''}</div>
+          <div class="nom-zone">${c.admin ? '👑' : '🔑'} ${echapperHtml(c.nom)}${estSoiMeme ? ' (vous)' : ''}</div>
           <div class="meta-zone">
-            ${c.admin ? 'Administrateur' : 'Accès gestionnaire'}
-            · <span class="badge ${c.actif ? 'badge-vert' : 'badge-gris'}">${c.actif ? 'Actif' : 'Désactivé'}</span>
-            ${c.empreinte ? '' : '<span class="badge badge-ambre">Mot de passe non défini</span>'}
+            ${ancien ? '<span class="badge badge-ambre">Ancien accès — à supprimer et recréer avec une adresse e-mail</span>' : `
+            ${echapperHtml(c.email)} · ${c.admin ? 'Administrateur' : 'Accès gestionnaire'}
+            · <span class="badge ${c.actif ? 'badge-vert' : 'badge-gris'}">${c.actif ? 'Actif' : 'Désactivé'}</span>`}
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">
-          <button class="bouton bouton-fantome bouton-petit" onclick="basculerActifCompte('${c.id}')">${c.actif ? 'Désactiver' : 'Activer'}</button>
-          <button class="bouton bouton-fantome bouton-petit" onclick="reinitialiserMotDePasseCompte('${c.id}')">Réinitialiser le mot de passe</button>
+          ${!ancien && !estSoiMeme ? `<button class="bouton bouton-fantome bouton-petit" onclick="basculerActifCompte('${c.id}')">${c.actif ? 'Désactiver' : 'Activer'}</button>` : ''}
+          ${!ancien ? `<button class="bouton bouton-fantome bouton-petit" onclick="reinitialiserMotDePasseCompte('${c.id}')">Envoyer un lien de mot de passe</button>` : ''}
           ${peutSupprimer ? `<button class="bouton bouton-fantome bouton-petit" style="color:var(--rouge);" onclick="supprimerCompte('${c.id}')">Supprimer</button>` : ''}
         </div>
       </div>
@@ -1359,15 +1432,40 @@ function afficherComptes() {
   }).join('');
 }
 
+function motDePasseAleatoire() {
+  const octets = crypto.getRandomValues(new Uint8Array(24));
+  return Array.from(octets, o => o.toString(16).padStart(2, '0')).join('');
+}
+
 async function ajouterCompte() {
   const nom = $('nom-compte').value.trim();
+  const email = $('email-compte').value.trim();
   if (!nom) { afficherNotification('Indiquez le nom de la personne', 'erreur'); return; }
+  if (!email) { afficherNotification("Indiquez l'adresse e-mail de la personne", 'erreur'); return; }
+  const bouton = $('bouton-ajouter-compte');
+  bouton.disabled = true;
   try {
-    await db.collection('comptes').doc(genererId()).set({ nom, empreinte: null, admin: false, actif: true });
-    $('nom-compte').value = '';
-    afficherNotification(`Accès créé pour ${nom} — elle définira son mot de passe à sa première connexion`, 'succes');
+    // Création de l'utilisateur Firebase avec un mot de passe aléatoire jamais
+    // communiqué : la personne choisit le sien via le lien reçu par e-mail.
+    const app = authSecondaire();
+    await app.auth().setPersistence(firebase.auth.Auth.Persistence.NONE);
+    let uid;
+    try {
+      const cred = await app.auth().createUserWithEmailAndPassword(email, motDePasseAleatoire());
+      uid = cred.user.uid;
+    } finally {
+      await app.auth().signOut();
+    }
+    await db.collection('comptes').doc(uid).set({ nom, email: email.toLowerCase(), admin: false, actif: true });
+    await firebase.auth().sendPasswordResetEmail(email);
+    $('nom-compte').value = ''; $('email-compte').value = '';
+    afficherNotification(`Accès créé pour ${nom} — un e-mail lui a été envoyé pour choisir son mot de passe`, 'succes');
   } catch (e) {
-    afficherNotification('Erreur : ' + e.message, 'erreur');
+    afficherNotification(e.code === 'auth/email-already-in-use'
+      ? "Cette adresse a déjà un utilisateur Firebase (accès supprimé ?) : supprimez-le dans la console Firebase, onglet Authentication, puis réessayez"
+      : messageErreurAuth(e), 'erreur');
+  } finally {
+    bouton.disabled = false;
   }
 }
 
@@ -1386,10 +1484,10 @@ function basculerActifCompte(id) {
 function reinitialiserMotDePasseCompte(id) {
   const c = Stockage.donnees.comptes.find(x => x.id === id);
   if (!c) return;
-  ouvrirDialogue('Réinitialiser le mot de passe', `« ${c.nom} » devra définir un nouveau mot de passe à sa prochaine connexion. Continuer ?`, () => {
-    db.collection('comptes').doc(id).update({ empreinte: null })
-      .then(() => afficherNotification('Mot de passe réinitialisé', 'succes'))
-      .catch(e => afficherNotification('Erreur : ' + e.message, 'erreur'));
+  ouvrirDialogue('Changer de mot de passe', `Envoyer à ${c.email} un lien pour choisir un nouveau mot de passe ? L'ancien reste valable tant que le lien n'est pas utilisé.`, () => {
+    firebase.auth().sendPasswordResetEmail(c.email)
+      .then(() => afficherNotification(`Lien envoyé à ${c.email}`, 'succes'))
+      .catch(e => afficherNotification(messageErreurAuth(e), 'erreur'));
   });
 }
 
@@ -1397,7 +1495,7 @@ function supprimerCompte(id) {
   const c = Stockage.donnees.comptes.find(x => x.id === id);
   if (!c) return;
   if (c.id === utilisateurActuel?.id) { afficherNotification('Impossible de supprimer votre propre compte', 'erreur'); return; }
-  if (c.admin && nbAdminsActifs() <= 1) { afficherNotification('Impossible de supprimer le dernier compte administrateur', 'erreur'); return; }
+  if (c.admin && !estAncienCompte(c) && nbAdminsActifs() <= 1) { afficherNotification('Impossible de supprimer le dernier compte administrateur', 'erreur'); return; }
   ouvrirDialogue('Supprimer cet accès', `Supprimer définitivement l'accès de « ${c.nom} » ?`, () => {
     db.collection('comptes').doc(id).delete()
       .then(() => afficherNotification('Accès supprimé', 'succes'))
@@ -2201,18 +2299,38 @@ async function exporterExcel() {
 /* ═══════════════════════════════════════════════════════════
    INITIALISATION
 ═══════════════════════════════════════════════════════════ */
-firebase.auth().onAuthStateChanged(u => { if (u) demarrerSynchronisation(); });
-firebase.auth().signInAnonymously().catch(err => {
-  console.error('Authentification anonyme impossible :', err);
-  afficherNotification('Connexion au serveur impossible — vérifiez votre connexion internet', 'erreur');
+firebase.auth().languageCode = 'fr';
+
+// Ouvriers : session Firebase anonyme. Gestionnaires : compte e-mail/mot de
+// passe Firebase Auth, rattaché à un document comptes/{uid}.
+firebase.auth().onAuthStateChanged(u => {
+  arreterSynchronisation();
+  if (!u) {
+    if (utilisateurActuel?.role === 'gestionnaire') seDeconnecter();
+    firebase.auth().signInAnonymously().catch(err => {
+      console.error('Authentification anonyme impossible :', err);
+      afficherNotification('Connexion au serveur impossible — vérifiez votre connexion internet', 'erreur');
+    });
+    return;
+  }
+  if (u.isAnonymous) {
+    if (utilisateurActuel?.role === 'gestionnaire') seDeconnecter();
+    demarrerSynchronisation();
+    return;
+  }
+  // Session ouvrier sur cet appareil : elle doit rester anonyme
+  if (utilisateurActuel?.role === 'ouvrier') { firebase.auth().signOut(); return; }
+  ouvrirSessionGestionnaire(u);
 });
 
+// Seule la session ouvrier est mémorisée localement ; celle du gestionnaire
+// est restaurée par Firebase Auth (onAuthStateChanged ci-dessus).
 const session = chargerSession();
-if (session) {
+if (session?.role === 'ouvrier') {
   utilisateurActuel = session;
-  if (utilisateurActuel.role==='gestionnaire') afficherVueGestionnaire();
-  else afficherVueOuvrier();
+  afficherVueOuvrier();
 } else {
+  effacerSession();
   afficherVue('connexion');
 }
 

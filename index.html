@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 
@@ -127,17 +127,19 @@
             <option value="">-- Choisir --</option>
           </select>
         </div>
-        <div id="section-compte-gestionnaire" class="conteneur-selection-ouvrier" style="display:none;">
-          <label class="libelle-champ">Compte</label>
-          <select id="selection-compte-gestionnaire" class="champ-liste">
-            <option value="">-- Choisir un compte --</option>
-          </select>
+        <div id="section-compte-gestionnaire" class="champ" style="display:none;">
+          <label class="libelle-champ">Adresse e-mail</label>
+          <input type="email" id="email-gestionnaire" autocomplete="username" placeholder="nom@exemple.be" oninput="mettreAJourBoutonConnexion()">
         </div>
         <div id="section-mdp-gestionnaire" class="champ" style="display:none;margin-bottom:24px;">
           <label class="libelle-champ" id="libelle-mdp-gestionnaire">Mot de passe</label>
-          <input type="password" id="mdp-gestionnaire" placeholder="••••••••" onkeydown="if(event.key==='Enter'){event.preventDefault();seConnecter();}" oninput="mettreAJourBoutonConnexion()">
+          <input type="password" id="mdp-gestionnaire" autocomplete="current-password" placeholder="••••••••" onkeydown="if(event.key==='Enter'){event.preventDefault();seConnecter();}" oninput="mettreAJourBoutonConnexion()">
           <div id="indice-compte-oublie" style="display:none;margin-top:4px;font-size:12px;color:var(--texte-3);">
-            Mot de passe oublié ou accès désactivé ? Contactez l'administrateur.
+            <a href="#" style="color:var(--bleu);" onclick="event.preventDefault();envoyerReinitialisationMdp();">Mot de passe oublié ?</a>
+            · Accès désactivé ? Contactez l'administrateur.
+          </div>
+          <div id="indice-premier-admin" style="display:none;margin-top:4px;font-size:12px;color:var(--texte-3);">
+            Aucun compte gestionnaire n'existe encore : cette adresse et ce mot de passe (6 caractères minimum) deviendront ceux de l'administrateur.
           </div>
         </div>
         <button class="bouton-connexion" id="bouton-connexion" onclick="seConnecter()" disabled>Continuer →</button>
@@ -588,8 +590,12 @@
                 <label class="libelle-champ">Nom de la personne</label>
                 <input type="text" id="nom-compte" placeholder="ex: Marie (secrétariat)">
               </div>
-              <button class="bouton bouton-primaire" onclick="ajouterCompte()" style="margin-top:4px;">Créer l'accès</button>
-              <span class="astuce-formulaire">La personne définira elle-même son mot de passe à sa première connexion.</span>
+              <div class="champ">
+                <label class="libelle-champ">Adresse e-mail</label>
+                <input type="email" id="email-compte" placeholder="marie@exemple.be">
+              </div>
+              <button class="bouton bouton-primaire" id="bouton-ajouter-compte" onclick="ajouterCompte()" style="margin-top:4px;">Créer l'accès</button>
+              <span class="astuce-formulaire">La personne recevra un e-mail pour choisir elle-même son mot de passe, puis se connectera avec cette adresse.</span>
             </div>
           </div>
         </div>
@@ -603,7 +609,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js').catch(() => {}));

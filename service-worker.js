@@ -1,4 +1,4 @@
-const CACHE = 'pointagepro-v9';
+const CACHE = 'pointagepro-v10';
 const FICHIERS_SHELL = [
   './',
   './index.html',
