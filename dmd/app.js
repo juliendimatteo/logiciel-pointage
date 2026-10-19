@@ -1987,7 +1987,7 @@ async function exporterExcel() {
   if (!donneesRapport.length && !donneesAbsencesRapport.length) return;
 
   const classeur = new ExcelJS.Workbook();
-  classeur.creator = 'PointagePro DMD';
+  classeur.creator = 'PointagePro DMD Frères ASBESTOS';
   classeur.created = new Date();
   const titrePeriode = `du ${formaterDateCourte(new Date($('rapport-du').value))} au ${formaterDateCourte(new Date($('rapport-au').value))}`;
 
