@@ -118,6 +118,8 @@ nécessaire (accès à Firestore).
 - `app.js` — logique applicative, synchronisation Firestore, géolocalisation
 - `manifest.json`, `service-worker.js`, `icons/` — installation en PWA
 - `.github/workflows/pages.yml` — déploiement automatique sur GitHub Pages
+- `dmd/` — copie indépendante de l'application pour l'équipe DMD (propre
+  projet Firebase, voir `dmd/README.md`)
 
 ## Notes
 

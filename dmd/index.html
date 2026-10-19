@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PointagePro DMD</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0F766E">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PointagePro DMD">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="style.css?v=dmd1">
+</head>
+<body>
+
+<!-- ─── NOTIFICATION ─── -->
+<div id="notification" class="notification">
+  <span id="icone-notification"></span>
+  <span id="message-notification"></span>
+</div>
+
+<!-- ─── BOÎTE DE DIALOGUE DE CONFIRMATION ─── -->
+<div id="dialogue" class="fond-dialogue">
+  <div class="boite-dialogue">
+    <div class="titre-dialogue" id="titre-dialogue"></div>
+    <div class="corps-dialogue" id="corps-dialogue"></div>
+    <div class="actions-dialogue">
+      <button class="bouton bouton-fantome bouton-petit" onclick="fermerDialogue()">Annuler</button>
+      <button class="bouton bouton-danger bouton-petit" id="confirmer-dialogue">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── BOÎTE DE DIALOGUE DE MODIFICATION D'UN POINTAGE ─── -->
+<div id="dialogue-pointage" class="fond-dialogue">
+  <div class="boite-dialogue">
+    <div class="titre-dialogue">✏️ Modifier le pointage</div>
+    <div style="font-size:13px;color:var(--texte-2);margin-bottom:16px;" id="contexte-modif-pointage"></div>
+    <div class="champ" style="margin-bottom:20px;">
+      <label class="libelle-champ">Date et heure</label>
+      <input type="datetime-local" id="horodatage-modif-pointage">
+    </div>
+    <div class="actions-dialogue">
+      <button class="bouton bouton-fantome bouton-petit" onclick="fermerModifPointage()">Annuler</button>
+      <button class="bouton bouton-primaire bouton-petit" onclick="enregistrerModifPointage()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── BOÎTE DE DIALOGUE DE SAISIE MANUELLE D'UN POINTAGE ─── -->
+<div id="dialogue-pointage-manuel" class="fond-dialogue">
+  <div class="boite-dialogue">
+    <div class="titre-dialogue">✍️ Saisie manuelle d'un pointage</div>
+    <div style="font-size:13px;color:var(--texte-2);margin-bottom:16px;">
+      Pour un ouvrier qui a oublié de pointer ou n'avait pas de réseau / GPS.
+    </div>
+    <div class="grille-formulaire" style="margin-bottom:20px;">
+      <div class="champ">
+        <label class="libelle-champ">Ouvrier</label>
+        <select class="champ-liste" id="manuel-ouvrier" onchange="proposerValeursPointageManuel()"></select>
+      </div>
+      <div class="champ">
+        <label class="libelle-champ">Type</label>
+        <select class="champ-liste" id="manuel-type">
+          <option value="entree">⬆️ Entrée</option>
+          <option value="sortie">⬇️ Sortie</option>
+        </select>
+      </div>
+      <div class="champ">
+        <label class="libelle-champ">Date et heure</label>
+        <input type="datetime-local" id="manuel-horodatage">
+      </div>
+      <div class="champ">
+        <label class="libelle-champ">Zone</label>
+        <select class="champ-liste" id="manuel-zone"></select>
+      </div>
+      <div class="champ">
+        <label class="libelle-champ">Motif</label>
+        <select class="champ-liste" id="manuel-motif">
+          <option value="oubli">Oubli de pointage</option>
+          <option value="reseau">Pas de réseau</option>
+          <option value="gps">GPS indisponible</option>
+          <option value="autre">Autre</option>
+        </select>
+      </div>
+    </div>
+    <div class="actions-dialogue">
+      <button class="bouton bouton-fantome bouton-petit" onclick="fermerPointageManuel()">Annuler</button>
+      <button class="bouton bouton-primaire bouton-petit" onclick="enregistrerPointageManuel()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     VUE CONNEXION
+═══════════════════════════════════════════ -->
+<div id="vue-connexion" class="vue">
+  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;">
+    <div class="boite-connexion">
+      <div class="logo-connexion">
+        <div class="icone-logo-connexion">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+          </svg>
+        </div>
+        <div class="nom-logo-connexion">Pointage<span>Pro</span> DMD</div>
+      </div>
+      <div class="carte-connexion">
+        <div class="titre-connexion">Connexion</div>
+        <div class="sous-titre-connexion">Sélectionnez votre rôle pour continuer</div>
+        <div class="grille-roles">
+          <div class="carte-role" id="role-gestionnaire" onclick="selectionnerRole('gestionnaire')">
+            <div class="icone-carte-role" style="background:#EFF6FF;">📊</div>
+            <div class="libelle-carte-role">Gestionnaire</div>
+            <div class="description-carte-role">Tableau de bord &amp; rapports</div>
+          </div>
+          <div class="carte-role" id="role-ouvrier" onclick="selectionnerRole('ouvrier')">
+            <div class="icone-carte-role" style="background:#F0FDF4;">👷</div>
+            <div class="libelle-carte-role">Ouvrier</div>
+            <div class="description-carte-role">Pointer entrée / sortie</div>
+          </div>
+        </div>
+        <div id="section-selection-ouvrier" class="conteneur-selection-ouvrier" style="display:none;">
+          <label class="libelle-champ">Sélectionnez votre nom</label>
+          <select id="selection-ouvrier" class="champ-liste">
+            <option value="">-- Choisir --</option>
+          </select>
+        </div>
+        <div id="section-compte-gestionnaire" class="conteneur-selection-ouvrier" style="display:none;">
+          <label class="libelle-champ">Compte</label>
+          <select id="selection-compte-gestionnaire" class="champ-liste">
+            <option value="">-- Choisir un compte --</option>
+          </select>
+        </div>
+        <div id="section-mdp-gestionnaire" class="champ" style="display:none;margin-bottom:24px;">
+          <label class="libelle-champ" id="libelle-mdp-gestionnaire">Mot de passe</label>
+          <input type="password" id="mdp-gestionnaire" placeholder="••••••••" onkeydown="if(event.key==='Enter'){event.preventDefault();seConnecter();}" oninput="mettreAJourBoutonConnexion()">
+          <div id="indice-compte-oublie" style="display:none;margin-top:4px;font-size:12px;color:var(--texte-3);">
+            Mot de passe oublié ou accès désactivé ? Contactez l'administrateur.
+          </div>
+        </div>
+        <button class="bouton-connexion" id="bouton-connexion" onclick="seConnecter()" disabled>Continuer →</button>
+      </div>
+      <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--texte-3);">
+        Données locales · GPS requis pour le pointage
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     VUE OUVRIER
+═══════════════════════════════════════════ -->
+<div id="vue-ouvrier" class="vue">
+  <header class="en-tete-app">
+    <div class="logo-en-tete">
+      <div class="icone-logo-en-tete">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/>
+        </svg>
+      </div>
+      PointagePro DMD
+    </div>
+    <div class="espaceur-en-tete"></div>
+    <div class="utilisateur-en-tete">
+      <div>
+        <div class="nom-utilisateur-en-tete" id="nom-entete-ouvrier"></div>
+        <div class="role-utilisateur-en-tete">Ouvrier</div>
+      </div>
+      <div class="avatar-en-tete" id="avatar-entete-ouvrier"></div>
+      <button class="bouton bouton-fantome bouton-petit" onclick="seDeconnecter()">Déconnexion</button>
+    </div>
+  </header>
+
+  <div class="contenu">
+    <!-- Date/Heure -->
+    <div class="date-heure-ouvrier">
+      <div class="date-ouvrier" id="date-ouvrier"></div>
+      <div class="heure-ouvrier" id="heure-ouvrier">--:--</div>
+    </div>
+
+    <!-- Statut -->
+    <div class="carte carte-statut">
+      <div class="ligne-carte-statut">
+        <div>
+          <div class="libelle-statut">Statut actuel</div>
+          <div class="valeur-statut" id="texte-statut-ouvrier">—</div>
+          <div class="depuis-statut" id="depuis-statut-ouvrier"></div>
+        </div>
+        <div id="badge-statut-ouvrier"></div>
+      </div>
+    </div>
+
+    <!-- GPS -->
+    <div class="carte carte-gps">
+      <div class="ligne-gps">
+        <div class="icone-gps">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/><path d="M19.778 4.222a10 10 0 0 1 0 15.556M4.222 4.222a10 10 0 0 0 0 15.556M15.536 8.464a5 5 0 0 1 0 7.072M8.464 8.464a5 5 0 0 0 0 7.072"/>
+          </svg>
+        </div>
+        <div class="info-gps">
+          <div class="statut-gps" id="statut-gps-ouvrier">Recherche de position…</div>
+          <div class="coordonnees-gps" id="coordonnees-gps-ouvrier">—</div>
+        </div>
+        <div id="badge-gps-ouvrier"></div>
+      </div>
+      <div class="zone-gps" id="ligne-zone-ouvrier" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bordure-2);">
+        <span id="point-zone-ouvrier" class="point point-gris"></span>
+        <span id="texte-zone-ouvrier" style="color:var(--texte-2);">Aucune zone configurée</span>
+      </div>
+    </div>
+
+    <!-- Radar -->
+    <div class="carte" style="padding:16px;" id="carte-radar-ouvrier">
+      <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--texte-3);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+        <span>Zone la plus proche</span>
+        <span id="distance-radar-ouvrier" style="color:var(--texte-2);font-variant-numeric:tabular-nums;"></span>
+      </div>
+      <div class="conteneur-radar">
+        <canvas id="radar-ouvrier" class="canevas-radar" width="200" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- Alerte incohérence pointage / position -->
+    <div class="carte" id="alerte-pointage-manquant" style="display:none;padding:14px 18px;background:var(--ambre-clair);border-color:var(--ambre);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:18px;flex-shrink:0;">⚠️</span>
+        <span id="texte-alerte-pointage" style="font-size:13px;font-weight:600;color:var(--ambre);"></span>
+      </div>
+    </div>
+
+    <!-- Bouton de pointage -->
+    <div class="conteneur-pointage">
+      <div class="bouton-pointage-exterieur">
+        <div class="anneau-bouton-pointage" id="anneau-pointage"></div>
+        <button class="bouton-pointage" id="bouton-pointage" onclick="pointer()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="icone-pointage">
+            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+          </svg>
+          <span id="libelle-pointage">Pointer</span>
+          <span class="libelle-bouton-pointage" id="sous-libelle-pointage">Chargement…</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Historique -->
+    <div id="section-historique-ouvrier">
+      <div class="titre-historique">Pointages d'aujourd'hui</div>
+      <div id="liste-historique-ouvrier"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     VUE GESTIONNAIRE
+═══════════════════════════════════════════ -->
+<div id="vue-gestionnaire" class="vue">
+  <header class="en-tete-app">
+    <div class="logo-en-tete">
+      <div class="icone-logo-en-tete">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/>
+        </svg>
+      </div>
+      PointagePro DMD
+    </div>
+    <div class="espaceur-en-tete"></div>
+    <div class="utilisateur-en-tete">
+      <div>
+        <div class="nom-utilisateur-en-tete" id="nom-utilisateur-en-tete">Gestionnaire</div>
+        <div class="role-utilisateur-en-tete" id="role-utilisateur-en-tete">Accès complet</div>
+      </div>
+      <div class="avatar-en-tete" id="avatar-en-tete" style="background:var(--ambre);">G</div>
+      <button class="bouton bouton-fantome bouton-petit" onclick="seDeconnecter()">Déconnexion</button>
+    </div>
+  </header>
+
+  <div class="contenu">
+    <div class="onglets">
+      <button class="bouton-onglet actif" onclick="changerOnglet('vue-ensemble', this)">📋 Vue d'ensemble</button>
+      <button class="bouton-onglet" onclick="changerOnglet('ouvriers', this)">👥 Ouvriers</button>
+      <button class="bouton-onglet" onclick="changerOnglet('zones', this)">📍 Zones</button>
+      <button class="bouton-onglet" onclick="changerOnglet('carte', this)">🗺️ Carte</button>
+      <button class="bouton-onglet" onclick="changerOnglet('absences', this)">🗓️ Absences</button>
+      <button class="bouton-onglet" onclick="changerOnglet('rapports', this)">📊 Rapports</button>
+      <button class="bouton-onglet" id="bouton-onglet-comptes" onclick="changerOnglet('comptes', this)" style="display:none;">🔑 Comptes</button>
+    </div>
+
+    <!-- ONGLET : VUE D'ENSEMBLE -->
+    <div id="onglet-vue-ensemble" class="panneau-onglet actif">
+      <div class="ligne-stats">
+        <div class="carte carte-stat">
+          <div class="entete-carte-stat">
+            <span class="badge badge-vert"><span class="point point-vert point-pulsation"></span>Présents</span>
+            <div class="icone-carte-stat" style="background:var(--vert-clair);">✅</div>
+          </div>
+          <div class="valeur-stat" id="stat-presents" style="color:var(--vert);">0</div>
+          <div class="libelle-stat">ouvriers sur chantier</div>
+        </div>
+        <div class="carte carte-stat">
+          <div class="entete-carte-stat">
+            <span class="badge badge-rouge">Absents</span>
+            <div class="icone-carte-stat" style="background:var(--rouge-clair);">🔴</div>
+          </div>
+          <div class="valeur-stat" id="stat-absents" style="color:var(--rouge);">0</div>
+          <div class="libelle-stat">non pointés, sans motif</div>
+        </div>
+        <div class="carte carte-stat">
+          <div class="entete-carte-stat">
+            <span class="badge badge-bleu">Absences</span>
+            <div class="icone-carte-stat" style="background:var(--bleu-clair);">🗓️</div>
+          </div>
+          <div class="valeur-stat" id="stat-absences" style="color:var(--bleu);">0</div>
+          <div class="libelle-stat">maladie, congé, chômage…</div>
+        </div>
+        <div class="carte carte-stat">
+          <div class="entete-carte-stat">
+            <span class="badge badge-ambre">Hors zone</span>
+            <div class="icone-carte-stat" style="background:var(--ambre-clair);">⚠️</div>
+          </div>
+          <div class="valeur-stat" id="stat-hors-zone" style="color:var(--ambre);">0</div>
+          <div class="libelle-stat">hors périmètre</div>
+        </div>
+      </div>
+      <div class="entete-section">
+        <div class="titre-section">Ouvriers</div>
+        <button class="bouton bouton-fantome bouton-petit" onclick="actualiserGestionnaire()">↻ Actualiser</button>
+      </div>
+      <div class="grille-ouvriers" id="grille-ouvriers-gestionnaire"></div>
+    </div>
+
+    <!-- ONGLET : OUVRIERS -->
+    <div id="onglet-ouvriers" class="panneau-onglet">
+      <div class="disposition-zones">
+        <div>
+          <div class="entete-section" style="margin-bottom:14px;">
+            <div class="titre-section">Liste des ouvriers</div>
+          </div>
+          <div id="liste-ouvriers-gestion" class="liste-zones"></div>
+        </div>
+        <div>
+          <div class="carte carte-ajout-zone">
+            <div class="titre-ajout-zone">➕ Ajouter un ouvrier</div>
+            <div class="grille-formulaire">
+              <div class="champ">
+                <label class="libelle-champ">Nom complet</label>
+                <input type="text" id="nom-ouvrier" placeholder="ex: Julien Dumont">
+              </div>
+              <div class="champ">
+                <label class="libelle-champ">Métier</label>
+                <input type="text" id="metier-ouvrier" placeholder="ex: Maçon">
+              </div>
+              <button class="bouton bouton-primaire" onclick="ajouterOuvrier()" style="margin-top:4px;">Ajouter l'ouvrier</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ONGLET : ZONES -->
+    <div id="onglet-zones" class="panneau-onglet">
+      <div class="disposition-zones">
+        <div>
+          <div class="entete-section" style="margin-bottom:14px;">
+            <div class="titre-section">Zones de pointage</div>
+          </div>
+          <div id="liste-zones" class="liste-zones"></div>
+        </div>
+        <div>
+          <div class="carte carte-ajout-zone">
+            <div class="titre-ajout-zone" id="titre-ajout-zone">➕ Ajouter une zone</div>
+            <div class="grille-formulaire">
+              <div class="champ">
+                <label class="libelle-champ">Nom du chantier</label>
+                <input type="text" id="nom-zone" placeholder="ex: Chantier Bruxelles">
+              </div>
+              <div class="champ">
+                <label class="libelle-champ">Adresse</label>
+                <input type="text" id="adresse-zone" placeholder="ex: Rue de la Loi 16, 1000 Bruxelles" onkeydown="if(event.key==='Enter'){event.preventDefault();rechercherAdresse();}">
+                <span class="astuce-formulaire" id="adresse-zone-statut">Recherche via OpenStreetMap · remplit automatiquement lat/long ci-dessous</span>
+              </div>
+              <button class="bouton bouton-fantome bouton-petit" onclick="rechercherAdresse()" id="bouton-recherche-adresse" style="margin-top:-4px;">
+                🔍 Rechercher l'adresse
+              </button>
+              <div class="champ">
+                <label class="libelle-champ">Latitude</label>
+                <input type="number" id="lat-zone" placeholder="50.8503" step="0.0001">
+              </div>
+              <div class="champ">
+                <label class="libelle-champ">Longitude</label>
+                <input type="number" id="lng-zone" placeholder="4.3517" step="0.0001">
+              </div>
+              <div class="champ">
+                <label class="libelle-champ">Rayon (mètres)</label>
+                <input type="number" id="rayon-zone" placeholder="100" min="10" max="5000">
+                <span class="astuce-formulaire">Zone dans laquelle le pointage est valide</span>
+              </div>
+              <button class="bouton bouton-primaire" onclick="enregistrerZone()" id="bouton-enregistrer-zone" style="margin-top:4px;">Ajouter la zone</button>
+              <button class="bouton bouton-fantome bouton-petit" onclick="annulerModifierZone()" id="bouton-annuler-modif-zone" style="display:none;">
+                Annuler la modification
+              </button>
+              <button class="bouton bouton-fantome bouton-petit" onclick="utiliserPositionActuelle()" style="margin-top:-4px;">
+                📍 Utiliser ma position actuelle
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ONGLET : CARTE -->
+    <div id="onglet-carte" class="panneau-onglet">
+      <div class="entete-section" style="margin-bottom:14px;">
+        <div class="titre-section">Position des ouvriers en direct</div>
+        <button class="bouton bouton-fantome bouton-petit" onclick="recadrerCarteManuel()">↻ Actualiser</button>
+      </div>
+      <div class="carte" style="padding:0;overflow:hidden;">
+        <div id="carte-live" style="height:520px;width:100%;"></div>
+      </div>
+      <div class="astuce-formulaire" style="margin-top:10px;">
+        Seuls les ouvriers actuellement <strong>présents</strong> (ayant pointé leur entrée) et ayant leur
+        application ouverte apparaissent sur la carte. Position mise à jour toutes les ~20 secondes.
+      </div>
+    </div>
+
+    <!-- ONGLET : ABSENCES -->
+    <div id="onglet-absences" class="panneau-onglet">
+      <div class="disposition-zones">
+        <div>
+          <div class="entete-section" style="margin-bottom:14px;">
+            <div class="titre-section">Absences</div>
+            <select class="champ-liste" id="filtre-absences" style="width:auto;min-width:210px;" onchange="afficherAbsences()">
+              <option value="actuelles">En cours et à venir</option>
+              <option value="toutes">Toutes (historique)</option>
+            </select>
+          </div>
+          <div id="liste-absences" class="liste-zones"></div>
+        </div>
+        <div>
+          <div class="carte carte-ajout-zone">
+            <div class="titre-ajout-zone" id="titre-ajout-absence">➕ Encoder une absence</div>
+            <div class="grille-formulaire">
+              <div class="champ">
+                <label class="libelle-champ">Ouvrier</label>
+                <select class="champ-liste" id="absence-ouvrier"></select>
+              </div>
+              <div class="champ">
+                <label class="libelle-champ">Motif</label>
+                <select class="champ-liste" id="absence-type">
+                  <option value="maladie">🤒 Maladie</option>
+                  <option value="conge">🏖️ Congé</option>
+                  <option value="recuperation">🔄 Récupération</option>
+                  <option value="formation">🎓 Formation</option>
+                  <option value="accident">🚑 Accident de travail</option>
+                  <option value="chomage_economique">📉 Chômage économique</option>
+                  <option value="chomage_intemperies">🌧️ Chômage intempéries</option>
+                  <option value="a_justifier">❓ Absence à justifier</option>
+                </select>
+              </div>
+              <div class="champ">
+                <label class="libelle-champ">Du</label>
+                <input type="date" id="absence-du" onchange="synchroniserDatesAbsence()">
+              </div>
+              <div class="champ">
+                <label class="libelle-champ">Au (inclus)</label>
+                <input type="date" id="absence-au">
+                <span class="astuce-formulaire">Pour un seul jour, laissez la même date</span>
+              </div>
+              <div class="champ">
+                <label class="libelle-champ">Commentaire (facultatif)</label>
+                <input type="text" id="absence-commentaire" placeholder="ex: certificat médical reçu">
+              </div>
+              <button class="bouton bouton-primaire" onclick="enregistrerAbsence()" id="bouton-enregistrer-absence" style="margin-top:4px;">Enregistrer l'absence</button>
+              <button class="bouton bouton-fantome bouton-petit" onclick="reinitialiserFormulaireAbsence()" id="bouton-annuler-modif-absence" style="display:none;">
+                Annuler la modification
+              </button>
+              <span class="astuce-formulaire">Une « absence à justifier » peut être requalifiée plus tard (ex. en maladie) via « Modifier ».</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ONGLET : RAPPORTS -->
+    <div id="onglet-rapports" class="panneau-onglet">
+      <div class="controles-rapport">
+        <div class="ligne-plage-dates">
+          <div class="champ">
+            <label class="libelle-champ">Du</label>
+            <input type="date" id="rapport-du">
+          </div>
+          <div class="champ">
+            <label class="libelle-champ">Au</label>
+            <input type="date" id="rapport-au">
+          </div>
+          <div class="champ">
+            <label class="libelle-champ">Ouvrier</label>
+            <select class="champ-liste" id="rapport-ouvrier" style="width:180px;">
+              <option value="">Tous les ouvriers</option>
+            </select>
+          </div>
+        </div>
+        <button class="bouton bouton-primaire" onclick="genererRapport()">Générer</button>
+        <button class="bouton bouton-fantome" onclick="ouvrirPointageManuel($('rapport-ouvrier').value)">✍️ Ajouter un pointage</button>
+        <button class="bouton bouton-fantome" onclick="exporterExcel()" id="bouton-export" style="display:none;">⬇ Exporter Excel</button>
+      </div>
+      <div class="entete-section" style="margin:24px 0 14px;">
+        <div class="titre-section">Totaux par jour et par zone</div>
+      </div>
+      <div class="conteneur-tableau-rapport">
+        <table class="tableau-rapport" id="tableau-totaux-zone">
+          <thead>
+            <tr>
+              <th>Ouvrier</th>
+              <th>Date</th>
+              <th>Zone</th>
+              <th>Temps total</th>
+            </tr>
+          </thead>
+          <tbody id="corps-totaux-zone">
+            <tr><td colspan="4" style="text-align:center;padding:32px;color:var(--texte-3);">Sélectionnez une période et cliquez sur Générer</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="entete-section" style="margin:28px 0 14px;">
+        <div class="titre-section">Absences</div>
+      </div>
+      <div class="conteneur-tableau-rapport">
+        <table class="tableau-rapport" id="tableau-absences-rapport">
+          <thead>
+            <tr>
+              <th>Ouvrier</th>
+              <th>Motif</th>
+              <th>Du</th>
+              <th>Au</th>
+              <th>Jours ouvrables</th>
+              <th>Commentaire</th>
+            </tr>
+          </thead>
+          <tbody id="corps-absences-rapport">
+            <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--texte-3);">Sélectionnez une période et cliquez sur Générer</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="entete-section" style="margin:28px 0 14px;">
+        <div class="titre-section">Détail des pointages</div>
+      </div>
+      <div class="conteneur-tableau-rapport">
+        <table class="tableau-rapport" id="tableau-rapport">
+          <thead>
+            <tr>
+              <th>Ouvrier</th>
+              <th>Date</th>
+              <th>Heure</th>
+              <th>Type</th>
+              <th>Zone</th>
+              <th>Durée session</th>
+              <th>Statut</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="corps-rapport">
+            <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--texte-3);">Sélectionnez une période et cliquez sur Générer</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ONGLET : COMPTES (administrateur uniquement) -->
+    <div id="onglet-comptes" class="panneau-onglet">
+      <div class="disposition-zones">
+        <div>
+          <div class="entete-section" style="margin-bottom:14px;">
+            <div class="titre-section">Accès gestionnaire</div>
+          </div>
+          <div id="liste-comptes" class="liste-zones"></div>
+        </div>
+        <div>
+          <div class="carte carte-ajout-zone">
+            <div class="titre-ajout-zone">➕ Autoriser un accès</div>
+            <div class="grille-formulaire">
+              <div class="champ">
+                <label class="libelle-champ">Nom de la personne</label>
+                <input type="text" id="nom-compte" placeholder="ex: Marie (secrétariat)">
+              </div>
+              <button class="bouton bouton-primaire" onclick="ajouterCompte()" style="margin-top:4px;">Créer l'accès</button>
+              <span class="astuce-formulaire">La personne définira elle-même son mot de passe à sa première connexion.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="app.js?v=dmd1"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js').catch(() => {}));
+  }
+</script>
+</body>
+</html>
