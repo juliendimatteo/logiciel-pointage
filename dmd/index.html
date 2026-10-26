@@ -504,6 +504,7 @@
         </div>
         <button class="bouton bouton-primaire" onclick="genererRapport()">Générer</button>
         <button class="bouton bouton-fantome" onclick="ouvrirPointageManuel($('rapport-ouvrier').value)">✍️ Ajouter un pointage</button>
+        <button class="bouton bouton-fantome" onclick="nettoyerSortiesAutomatiques()" id="bouton-nettoyer-auto" style="display:none;" title="Supprimer les sorties automatiques en double ou sans entrée le même jour">🧹 Nettoyer les doublons</button>
         <button class="bouton bouton-fantome" onclick="exporterExcel()" id="bouton-export" style="display:none;">⬇ Exporter Excel</button>
       </div>
       <div class="entete-section" style="margin:24px 0 14px;">
